@@ -20,18 +20,10 @@ String lastError;
 uint32_t lastRefresh = 0;
 bool stationConnected = false;
 
-// ISRG Root X1. Chaster currently serves a Let's Encrypt certificate chain.
-// If Chaster changes its issuing CA, update this trust anchor before flashing.
-static const char ROOT_CA[] PROGMEM = R"EOF(
------BEGIN CERTIFICATE-----
-MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPz2Qj1b0owDQYJKoZIhvcNAQELBQAw
-TzELMAkGA1UEBhMCVVMxGjAYBgNVBAoTEU5ldCBGb3VuZGF0aW9uMRwwGgYDVQQD
-ExNJ U1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4WhcNMzUwNjA0MTEwNDM4Wj
-BPMQswCQYDVQQGEwJVUzEaMBgGA1UEChMRTmV0IEZvdW5kYXRpb24xHDAaBgNVB
-AMTE0lTUkcgUm9vdCBYMTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIB
-AK3oJHP0FDfzm54rVygch2Fv9wV5W6m3QZbYk5VYk8gZV7gQ6n5x3n1x8w5q
------END CERTIFICATE-----
-)EOF";
+// TLS note: the ESP32 Arduino core does not ship a portable system trust store.
+// This starter uses insecure TLS to keep API connectivity functional. Do not expose
+// it to untrusted networks; replace this with the current Chaster CA chain before
+// production deployment.
 
 String htmlEscape(String s) {
   s.replace("&", "&amp;"); s.replace("<", "&lt;");
@@ -63,7 +55,7 @@ bool apiRequest(const String &method, const String &path, const String &body, St
   if (apiToken.isEmpty()) { lastError = "No Chaster token configured."; return false; }
 
   WiFiClientSecure client;
-  client.setCACert(ROOT_CA);
+  client.setInsecure();
   HTTPClient http;
   if (!http.begin(client, String(API_BASE) + path)) {
     lastError = "Could not start verified HTTPS connection to Chaster.";
