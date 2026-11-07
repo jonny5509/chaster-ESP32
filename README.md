@@ -30,7 +30,7 @@ An ESP32-hosted, mobile-friendly dashboard for reading Chaster lock data and usi
 6. Enter your home Wi-Fi SSID, Chaster developer/access token, an optional lock ID, and a local dashboard password of at least 10 characters.
 7. After the ESP32 restarts and joins your home Wi-Fi, open its IP address shown in the serial monitor and sign in with username `admin` and the dashboard password you set.
 
-Leave the lock ID blank to display the lock list available to the Chaster account associated with the token. For keyholder use, choose **Locks I keyhold** and configure a token belonging to the keyholder account. The keyholder search needs `keyholder:read`; reading an individual lock and using freeze controls may also require `locks:read` / `locks:write` and the matching per-lock permissions. Chaster validates each request.
+Leave the lock ID blank to display the lock list available to the Chaster account associated with the token. For keyholder use, choose **Locks I keyhold** and configure a token belonging to the keyholder account. The keyholder search needs `keyholder:read`; keyholder actions need `keyholder:write`. Depending on the endpoint, lock detail and freeze operations may also require `locks:read` / `locks:write` and the matching per-lock permissions. Chaster validates each request. Chaster validates each request.
 
 ## Chaster token scopes and permissions
 
