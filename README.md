@@ -7,7 +7,7 @@ An ESP32-hosted, mobile-friendly dashboard for reading Chaster lock data and usi
 - Wi-Fi setup access point: `Chaster-ESP32` (password: `chaster32`)
 - Stores Wi-Fi details, Chaster token, optional lock ID and local dashboard password in ESP32 NVS
 - Uses Chaster Public API Bearer-token authentication
-- Reads `GET /locks` when no lock ID is set, or `GET /locks/{lockId}` for a selected lock\n- Lets you select a lock from the returned account lock list\n- Loads recent lock history with `POST /locks/{lockId}/history`
+- Reads `GET /locks` for the token owner's locks, or `POST /keyholder/locks/search` in keyholder mode\n- Reads `GET /locks/{lockId}` for a selected lock\n- Lets you select a lock from the returned account lock list\n- Loads recent lock history with `POST /locks/{lockId}/history`
 - Refreshes the Chaster data every 30 seconds\n- Displays elapsed and remaining lock time from Chaster's start/end timestamps
 - Freeze/unfreeze controls using `POST /locks/{lockId}/freeze` with the documented `{ "isFrozen": true|false }` body
 - HTTP Basic Authentication for the local dashboard and its API routes
@@ -30,7 +30,7 @@ An ESP32-hosted, mobile-friendly dashboard for reading Chaster lock data and usi
 6. Enter your home Wi-Fi SSID, Chaster developer/access token, an optional lock ID, and a local dashboard password of at least 10 characters.
 7. After the ESP32 restarts and joins your home Wi-Fi, open its IP address shown in the serial monitor and sign in with username `admin` and the dashboard password you set.
 
-Leave the lock ID blank to display the lock list available to the Chaster account associated with the token. For keyholder use, configure a token belonging to the keyholder account with the required Chaster API scopes and permissions.
+Leave the lock ID blank to display the lock list available to the Chaster account associated with the token. For keyholder use, choose **Locks I keyhold** and configure a token belonging to the keyholder account. The keyholder search needs `keyholder:read`; reading an individual lock and using freeze controls may also require `locks:read` / `locks:write` and the matching per-lock permissions. Chaster validates each request.
 
 ## Chaster token scopes and permissions
 
