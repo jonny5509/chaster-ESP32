@@ -104,7 +104,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;b
 <div class="status" id="status">Loading device status…</div>
 <section><h2>Lock dashboard</h2>
 <div class="grid"><button onclick="refresh()">Refresh now</button><button class="secondary" onclick="loadState()">Reload dashboard</button></div>
-<div id="lockSummary" class="muted">No lock data loaded.</div>\n<label for="lockSelect">Choose a lock from your account</label><select id="lockSelect"><option value="">All locks</option></select><button class="secondary" onclick="chooseLock()">Open selected lock</button>
+<div id="lockSummary" class="muted">No lock data loaded.</div>
+<label for="lockSelect">Choose a lock from your account</label><select id="lockSelect"><option value="">All locks</option></select><button class="secondary" onclick="chooseLock()">Open selected lock</button>
 <h3>Raw Chaster response</h3><pre id="json">Loading…</pre>
 </section>
 <section><h2>Lock history</h2><button class="secondary" onclick="loadHistory()">Load recent history</button><pre id="history">Choose a lock to view its recent history.</pre></section>\n<section><h2>Lock controls</h2>
@@ -193,14 +194,14 @@ void handleSelectLock() {
   prefs.begin("chaster", false); prefs.putString("lock_id", lockId); prefs.end();
   refreshLock();
   if (lastError.length()) { sendError(502, lastError); return; }
-  sendJson(200, "{\\"ok\\":true}");
+  sendJson(200, "{\"ok\":true}");
 }
 
 void handleHistory() {
   if (!requireLogin()) return;
   if (lockId.isEmpty()) { sendError(400, "Choose a specific lock first."); return; }
   String response;
-  if (!apiRequest("POST", "/locks/" + lockId + "/history", "{\\"limit\\":20}", response)) {
+  if (!apiRequest("POST", "/locks/" + lockId + "/history", "{\"limit\":20}", response)) {
     sendError(502, lastError); return;
   }
   JsonDocument result;
@@ -278,7 +279,9 @@ void setup() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/state", HTTP_GET, handleState);
   server.on("/api/refresh", HTTP_POST, handleRefresh);
-  server.on("/api/freeze", HTTP_POST, handleFreeze);\n  server.on("/api/select-lock", HTTP_POST, handleSelectLock);\n  server.on("/api/history", HTTP_POST, handleHistory);
+  server.on("/api/freeze", HTTP_POST, handleFreeze);
+  server.on("/api/select-lock", HTTP_POST, handleSelectLock);
+  server.on("/api/history", HTTP_POST, handleHistory);
   server.on("/api/config", HTTP_POST, handleConfig);
   server.on("/api/reset", HTTP_POST, handleReset);
   server.onNotFound([](){ server.send(404, "text/plain", "Not found"); });
