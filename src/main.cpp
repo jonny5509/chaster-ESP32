@@ -191,7 +191,7 @@ void handleSelectLock() {
   JsonDocument d;
   if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
   String selected = d["lockId"] | "";
-  if (selected.isEmpty()) { sendError(400, "Lock ID is required."); return; }
+  if (selected.length() == 0) { sendError(400, "Lock ID is required."); return; }
   lockId = selected;
   prefs.begin("chaster", false); prefs.putString("lock_id", lockId); prefs.end();
   refreshLock();
