@@ -104,10 +104,10 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;b
 <div class="status" id="status">Loading device status…</div>
 <section><h2>Lock dashboard</h2>
 <div class="grid"><button onclick="refresh()">Refresh now</button><button class="secondary" onclick="loadState()">Reload dashboard</button></div>
-<div id="lockSummary" class="muted">No lock data loaded.</div>
+<div id="lockSummary" class="muted">No lock data loaded.</div>\n<label for="lockSelect">Choose a lock from your account</label><select id="lockSelect"><option value="">All locks</option></select><button class="secondary" onclick="chooseLock()">Open selected lock</button>
 <h3>Raw Chaster response</h3><pre id="json">Loading…</pre>
 </section>
-<section><h2>Lock controls</h2>
+<section><h2>Lock history</h2><button class="secondary" onclick="loadHistory()">Load recent history</button><pre id="history">Choose a lock to view its recent history.</pre></section>\n<section><h2>Lock controls</h2>
 <p class="muted">Freeze and unfreeze use Chaster's documented lock endpoint. Chaster checks your token scope and the lock's permissions.</p>
 <div class="grid"><button onclick="setFreeze(true)">Freeze lock</button><button onclick="setFreeze(false)">Unfreeze lock</button></div>
 <div id="actionMsg" class="status">Choose a control to send a request.</div>
@@ -131,7 +131,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;b
 <script>
 async function call(url,opts={}){const r=await fetch(url,opts);const t=await r.text();let d;try{d=JSON.parse(t)}catch(e){throw new Error(t||('HTTP '+r.status))}if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
 function show(id,msg){document.getElementById(id).textContent=msg}
-async function loadState(){try{const x=await call('/api/state');show('status',x.connected?'Wi-Fi connected · '+x.ip:'Setup access point active · connect to Chaster-ESP32');show('json',JSON.stringify(x.data,null,2));const d=x.data;let summary='';if(Array.isArray(d))summary='Your account has '+d.length+' lock(s).';else if(d&&typeof d==='object')summary='Lock: '+(d.title||d._id||'loaded')+' · Status: '+(d.status||'unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown');show('lockSummary',summary||'Chaster response received.');}catch(e){show('status',e.message);}}
+async function loadState(){try{const x=await call('/api/state');show('status',x.connected?'Wi-Fi connected · '+x.ip:'Setup access point active · connect to Chaster-ESP32');show('json',JSON.stringify(x.data,null,2));const d=x.data;let summary='';const sel=document.getElementById('lockSelect');const current=Array.isArray(d)?'':(d&&d._id?d._id:'');if(Array.isArray(d)){summary='Your account has '+d.length+' lock(s).';const previous=sel.value;sel.innerHTML='<option value="">All locks</option>';d.forEach(lock=>{if(!lock||!lock._id)return;const o=document.createElement('option');o.value=lock._id;o.textContent=(lock.title||lock._id)+' · '+(lock.status||'');sel.appendChild(o)});sel.value=previous;}else if(d&&typeof d==='object'){summary='Lock: '+(d.title||d._id||'loaded')+' · Status: '+(d.status||'unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown');if(current){sel.innerHTML='';const o=document.createElement('option');o.value=current;o.textContent=(d.title||current)+' · '+(d.status||'');sel.appendChild(o);}}show('lockSummary',summary||'Chaster response received.');}catch(e){show('status',e.message);}}
 async function refresh(){try{await call('/api/refresh',{method:'POST'});await loadState();}catch(e){show('actionMsg',e.message)}}
 async function setFreeze(value){if(!confirm((value?'Freeze':'Unfreeze')+' this Chaster lock?'))return;try{const x=await call('/api/freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({isFrozen:value})});show('actionMsg',x.message||'Chaster accepted the request.');await loadState();}catch(e){show('actionMsg',e.message)}}
 document.getElementById('config').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const p={ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword'),token:f.get('token'),lockId:f.get('lockId'),dashboardPassword:f.get('dashboardPassword')};try{await call('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});show('status','Settings saved. Restarting device…');}catch(err){show('status',err.message)}});
@@ -155,7 +155,7 @@ void handleState() {
   d["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   JsonDocument data;
   if (deserializeJson(data, lastJson)) data["raw"] = lastJson;
-  d["data"] = data;
+  d["data"].set(data.as<JsonVariantConst>());
   String out; serializeJson(d, out); sendJson(200, out);
 }
 
@@ -181,6 +181,34 @@ void handleFreeze() {
   }
   refreshLock();
   sendJson(200, "{\"ok\":true,\"message\":\"Chaster accepted the freeze-state request.\"}");
+}
+
+void handleSelectLock() {
+  if (!requireLogin()) return;
+  JsonDocument d;
+  if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
+  String selected = d["lockId"] | "";
+  if (selected.isEmpty()) { sendError(400, "Lock ID is required."); return; }
+  lockId = selected;
+  prefs.begin("chaster", false); prefs.putString("lock_id", lockId); prefs.end();
+  refreshLock();
+  if (lastError.length()) { sendError(502, lastError); return; }
+  sendJson(200, "{\\"ok\\":true}");
+}
+
+void handleHistory() {
+  if (!requireLogin()) return;
+  if (lockId.isEmpty()) { sendError(400, "Choose a specific lock first."); return; }
+  String response;
+  if (!apiRequest("POST", "/locks/" + lockId + "/history", "{\\"limit\\":20}", response)) {
+    sendError(502, lastError); return;
+  }
+  JsonDocument result;
+  if (deserializeJson(result, response)) { sendError(502, "Chaster returned invalid history JSON."); return; }
+  JsonDocument out;
+  out["ok"] = true;
+  out["data"].set(result.as<JsonVariantConst>());
+  String body; serializeJson(out, body); sendJson(200, body);
 }
 
 void handleConfig() {
@@ -250,7 +278,7 @@ void setup() {
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/state", HTTP_GET, handleState);
   server.on("/api/refresh", HTTP_POST, handleRefresh);
-  server.on("/api/freeze", HTTP_POST, handleFreeze);
+  server.on("/api/freeze", HTTP_POST, handleFreeze);\n  server.on("/api/select-lock", HTTP_POST, handleSelectLock);\n  server.on("/api/history", HTTP_POST, handleHistory);
   server.on("/api/config", HTTP_POST, handleConfig);
   server.on("/api/reset", HTTP_POST, handleReset);
   server.onNotFound([](){ server.send(404, "text/plain", "Not found"); });
