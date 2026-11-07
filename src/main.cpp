@@ -33,7 +33,7 @@ String htmlEscape(String s) {
 }
 
 bool requireLogin() {
-  if (dashboardPassword.isEmpty()) return true;
+  if (dashboardPassword.length() == 0) return true;
   if (server.authenticate("admin", dashboardPassword.c_str())) return true;
   server.requestAuthentication(BASIC_AUTH, "Chaster ESP32", "Login required");
   return false;
@@ -52,13 +52,13 @@ void sendError(int code, const String &message) {
 
 bool apiRequest(const String &method, const String &path, const String &body, String &response) {
   if (WiFi.status() != WL_CONNECTED) { lastError = "Wi-Fi is not connected."; return false; }
-  if (apiToken.isEmpty()) { lastError = "No Chaster token configured."; return false; }
+  if (apiToken.length() == 0) { lastError = "No Chaster token configured."; return false; }
 
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   if (!http.begin(client, String(API_BASE) + path)) {
-    lastError = "Could not start verified HTTPS connection to Chaster.";
+    lastError = "Could not start HTTPS connection to Chaster.";
     return false;
   }
   http.setTimeout(15000);
@@ -82,7 +82,7 @@ bool apiRequest(const String &method, const String &path, const String &body, St
 
 void refreshLock() {
   String response;
-  String path = lockId.isEmpty() ? "/locks" : "/locks/" + lockId;
+  String path = lockId.length() == 0 ? "/locks" : "/locks/" + lockId;
   if (apiRequest("GET", path, "", response)) {
     lastJson = response;
     lastRefresh = millis();
@@ -171,7 +171,7 @@ void handleRefresh() {
 
 void handleFreeze() {
   if (!requireLogin()) return;
-  if (lockId.isEmpty()) { sendError(400, "Set a Lock ID in device settings first."); return; }
+  if (lockId.length() == 0) { sendError(400, "Set a Lock ID in device settings first."); return; }
   JsonDocument input;
   if (deserializeJson(input, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
   if (!input["isFrozen"].is<bool>()) { sendError(400, "isFrozen must be true or false."); return; }
@@ -201,7 +201,7 @@ void handleSelectLock() {
 
 void handleHistory() {
   if (!requireLogin()) return;
-  if (lockId.isEmpty()) { sendError(400, "Choose a specific lock first."); return; }
+  if (lockId.length() == 0) { sendError(400, "Choose a specific lock first."); return; }
   String response;
   if (!apiRequest("POST", "/locks/" + lockId + "/history", "{\"limit\":20}", response)) {
     sendError(502, lastError); return;
@@ -223,13 +223,13 @@ void handleConfig() {
   String token = d["token"] | "";
   String newLock = d["lockId"] | "";
   String newDash = d["dashboardPassword"] | "";
-  if (ssid.isEmpty()) { sendError(400, "Wi-Fi SSID is required."); return; }
-  if (token.isEmpty() && apiToken.isEmpty()) { sendError(400, "Chaster token is required."); return; }
-  if (newDash.length() < 10 && dashboardPassword.isEmpty()) { sendError(400, "Dashboard password must be at least 10 characters."); return; }
+  if (ssid.length() == 0) { sendError(400, "Wi-Fi SSID is required."); return; }
+  if (token.length() == 0 && apiToken.length() == 0) { sendError(400, "Chaster token is required."); return; }
+  if (newDash.length() < 10 && dashboardPassword.length() == 0) { sendError(400, "Dashboard password must be at least 10 characters."); return; }
   prefs.begin("chaster", false);
   prefs.putString("ssid", ssid);
-  if (!pass.isEmpty()) prefs.putString("wifi_pw", pass);
-  if (!token.isEmpty()) prefs.putString("token", token);
+  if (!pass.length() == 0) prefs.putString("wifi_pw", pass);
+  if (!token.length() == 0) prefs.putString("token", token);
   prefs.putString("lock_id", newLock);
   prefs.putString("dash_pw", newDash);
   prefs.end();
@@ -251,7 +251,7 @@ void startSetupAP() {
 }
 
 void connectWiFi() {
-  if (wifiSsid.isEmpty()) return;
+  if (wifiSsid.length() == 0) return;
   WiFi.mode(WIFI_AP_STA);
   WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
   uint32_t started = millis();
@@ -289,13 +289,13 @@ void setup() {
   server.onNotFound([](){ server.send(404, "text/plain", "Not found"); });
   server.begin();
 
-  if (WiFi.status() == WL_CONNECTED && !apiToken.isEmpty()) refreshLock();
+  if (WiFi.status() == WL_CONNECTED && !apiToken.length() == 0) refreshLock();
   Serial.println("Chaster ESP32 dashboard ready.");
   Serial.println(WiFi.status() == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP());
 }
 
 void loop() {
   server.handleClient();
-  if (WiFi.status() == WL_CONNECTED && !apiToken.isEmpty() && millis() - lastRefresh >= REFRESH_MS) refreshLock();
+  if (WiFi.status() == WL_CONNECTED && !apiToken.length() == 0 && millis() - lastRefresh >= REFRESH_MS) refreshLock();
   delay(2);
 }
