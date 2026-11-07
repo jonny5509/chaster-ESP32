@@ -234,7 +234,7 @@ void handleConfig() {
   if (ssid.length() == 0) { sendError(400, "Wi-Fi SSID is required."); return; }
   if (newMode != "wearer" && newMode != "keyholder") { sendError(400, "Invalid account view."); return; }
   if (token.length() == 0 && apiToken.length() == 0) { sendError(400, "Chaster token is required."); return; }
-  if (newDash.length() < 10 && dashboardPassword.length() == 0) { sendError(400, "Dashboard password must be at least 10 characters."); return; }
+  if (newDash.length() < 10) { sendError(400, "Dashboard password must be at least 10 characters."); return; }
   prefs.begin("chaster", false);
   prefs.putString("ssid", ssid);
   if (pass.length() > 0) prefs.putString("wifi_pw", pass);
