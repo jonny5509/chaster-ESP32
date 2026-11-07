@@ -119,7 +119,11 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;b
 <p class="muted">Freeze and unfreeze use Chaster's documented lock endpoint. Chaster checks your token scope and the lock's permissions.</p>
 <div class="grid"><button onclick="setFreeze(true)">Freeze lock</button><button onclick="setFreeze(false)">Unfreeze lock</button></div>
 <div id="actionMsg" class="status">Choose a control to send a request.</div>
-<p class="muted">Add/remove time is not enabled in this build: the current Public API OpenAPI schema defines UpdateTimeDto with no fields, so it does not document a duration or direction payload.</p>
+<h3>Change lock time</h3>
+<label for="timeHours">Hours</label><input id="timeHours" type="number" min="0" max="8760" value="1">
+<label for="timeMinutes">Minutes</label><input id="timeMinutes" type="number" min="0" max="59" value="0">
+<div class="grid"><button onclick="changeTime(true)">Add time</button><button class="danger" onclick="changeTime(false)">Remove time</button></div>
+<p class="muted">Uses the Public API update-time endpoint with a signed duration in seconds. Chaster enforces token scopes, role permissions and lock limits. Check the response before assuming a change succeeded.</p>
 </section>
 <section><h2>Device settings</h2>
 <form id="config">
@@ -143,6 +147,12 @@ function show(id,msg){document.getElementById(id).textContent=msg}
 async function loadState(){try{const x=await call('/api/state');show('status',x.apiError?x.apiError:(x.connected?'Wi-Fi connected · '+x.ip:'Setup access point active · connect to Chaster-ESP32'));show('json',JSON.stringify(x.data,null,2));const d=x.data;let summary='';const sel=document.getElementById('lockSelect');const lockList=Array.isArray(d)?d:(d&&Array.isArray(d.locks)?d.locks:null);const current=lockList?'':(d&&d._id?d._id:'');if(lockList){startMs=0;endMs=0;renderTimer();summary='Found '+lockList.length+' lock(s).';const previous=sel.value;sel.innerHTML='<option value="">All locks</option>';lockList.forEach(lock=>{if(!lock||!lock._id)return;const o=document.createElement('option');o.value=lock._id;o.textContent=(lock.title||lock._id)+' · '+(lock.status||'');sel.appendChild(o)});sel.value=previous;}else if(d&&typeof d==='object'){summary='Lock: '+(d.title||d._id||'loaded')+' · Status: '+(d.status||'unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown');startMs=Date.parse(d.startDate||'');if(!Number.isFinite(startMs))startMs=0;endMs=Date.parse(d.endDate||'');if(!Number.isFinite(endMs))endMs=0;renderTimer();if(current){sel.innerHTML='';const o=document.createElement('option');o.value=current;o.textContent=(d.title||current)+' · '+(d.status||'');sel.appendChild(o);}}show('lockSummary',summary||'Chaster response received.');}catch(e){show('status',e.message);}}
 async function refresh(){try{await call('/api/refresh',{method:'POST'});await loadState();}catch(e){show('actionMsg',e.message)}}
 async function setFreeze(value){if(!confirm((value?'Freeze':'Unfreeze')+' this Chaster lock?'))return;try{const x=await call('/api/freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({isFrozen:value})});show('actionMsg',x.message||'Chaster accepted the request.');await loadState();}catch(e){show('actionMsg',e.message)}}
+let startMs=0,endMs=0;
+function humanDuration(ms){if(!Number.isFinite(ms))return '—';const neg=ms<0;let n=Math.floor(Math.abs(ms)/1000);const days=Math.floor(n/86400);n%=86400;const hours=Math.floor(n/3600);n%=3600;const mins=Math.floor(n/60);const secs=n%60;return (neg?'-':'')+(days?days+'d ':'')+hours+'h '+mins+'m '+secs+'s';}
+function renderTimer(){const now=Date.now();const elapsed=startMs?Math.max(0,now-startMs):NaN;const remaining=endMs?endMs-now:NaN;show('timer','Time passed: '+humanDuration(elapsed)+' · Time remaining: '+humanDuration(remaining));}
+async function chooseLock(){const id=document.getElementById('lockSelect').value;if(!id){show('actionMsg','Choose a specific lock first.');return;}try{await call('/api/select-lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lockId:id})});await loadState();show('actionMsg','Selected lock loaded.');}catch(e){show('actionMsg',e.message);}}
+async function loadHistory(){try{const x=await call('/api/history',{method:'POST'});show('history',JSON.stringify(x.data,null,2));}catch(e){show('history',e.message);}}
+async function changeTime(add){const h=Number(document.getElementById('timeHours').value);const m=Number(document.getElementById('timeMinutes').value);if(!Number.isInteger(h)||!Number.isInteger(m)||h<0||m<0||m>59||(h===0&&m===0)){show('actionMsg','Enter a positive duration.');return;}const seconds=(h*3600+m*60)*(add?1:-1);if(!confirm((add?'Add ':'Remove ')+h+'h '+m+'m '+(add?'to':'from')+' this lock?'))return;try{const x=await call('/api/update-time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:seconds})});show('actionMsg',x.message||'Chaster accepted the time-change request.');await refresh();}catch(e){show('actionMsg',e.message);}}
 document.getElementById('config').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const p={ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword'),token:f.get('token'),lockId:f.get('lockId'),dashboardPassword:f.get('dashboardPassword'),mode:f.get('mode')};try{await call('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});show('status','Settings saved. Restarting device…');}catch(err){show('status',err.message)}});
 async function resetDevice(){if(!confirm('Erase all stored credentials and restart?'))return;try{await call('/api/reset',{method:'POST'});show('status','Credentials cleared. Device restarting.');}catch(e){show('status',e.message)}}
 loadState();setInterval(loadState,30000);setInterval(renderTimer,1000);
@@ -161,6 +171,8 @@ void handleState() {
   JsonDocument d;
   d["ok"] = true;
   d["connected"] = WiFi.status() == WL_CONNECTED;
+  d["lockId"] = lockId;
+  d["viewMode"] = viewMode;
   d["apiError"] = lastError;
   d["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   JsonDocument data;
@@ -191,6 +203,29 @@ void handleFreeze() {
   }
   refreshLock();
   sendJson(200, "{\"ok\":true,\"message\":\"Chaster accepted the freeze-state request.\"}");
+}
+
+
+void handleUpdateTime() {
+  if (!requireLogin()) return;
+  if (lockId.length() == 0) { sendError(400, "Select a specific lock first."); return; }
+  JsonDocument input;
+  if (deserializeJson(input, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
+  if (!input["duration"].is<long>()) { sendError(400, "duration must be a signed integer number of seconds."); return; }
+  long duration = input["duration"].as<long>();
+  if (duration == 0 || duration < -31536000L || duration > 31536000L) {
+    sendError(400, "Duration must be between -365 and 365 days and cannot be zero."); return;
+  }
+  JsonDocument body; body["duration"] = duration;
+  String payload; serializeJson(body, payload);
+  String response;
+  if (!apiRequest("POST", "/locks/" + lockId + "/update-time", payload, response)) {
+    sendError(502, lastError); return;
+  }
+  refreshLock();
+  JsonDocument out; out["ok"] = true;
+  out["message"] = duration > 0 ? "Chaster accepted the add-time request." : "Chaster accepted the remove-time request.";
+  String result; serializeJson(out, result); sendJson(200, result);
 }
 
 void handleSelectLock() {
@@ -293,6 +328,7 @@ void setup() {
   server.on("/api/state", HTTP_GET, handleState);
   server.on("/api/refresh", HTTP_POST, handleRefresh);
   server.on("/api/freeze", HTTP_POST, handleFreeze);
+  server.on("/api/update-time", HTTP_POST, handleUpdateTime);
   server.on("/api/select-lock", HTTP_POST, handleSelectLock);
   server.on("/api/history", HTTP_POST, handleHistory);
   server.on("/api/config", HTTP_POST, handleConfig);
@@ -307,6 +343,6 @@ void setup() {
 
 void loop() {
   server.handleClient();
-  if (WiFi.status() == WL_CONNECTED && !apiToken.length() == 0 && millis() - lastRefresh >= REFRESH_MS) refreshLock();
+  if (WiFi.status() == WL_CONNECTED && apiToken.length() > 0 && millis() - lastRefresh >= REFRESH_MS) refreshLock();
   delay(2);
 }
