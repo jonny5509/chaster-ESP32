@@ -4,62 +4,84 @@
 #include <Preferences.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
 
 namespace {
-constexpr char AP_NAME[] = "Chaster-ESP32-Setup";
+constexpr char AP_NAME[] = "Chaster-ESP32";
+constexpr char AP_PASSWORD[] = "chaster32"; // Change before deployment.
 constexpr char API_BASE[] = "https://api.chaster.app";
 constexpr uint32_t REFRESH_MS = 30000;
+
 WebServer server(80);
 Preferences prefs;
-String wifiSsid, wifiPassword, apiToken, lockId;
-String lastApiResponse = "Not queried yet";
+String wifiSsid, wifiPassword, apiToken, lockId, dashboardPassword;
+String lastJson = "{}";
 String lastError;
 uint32_t lastRefresh = 0;
-bool connected = false;
+bool stationConnected = false;
 
-String escapeHtml(String s) {
+// ISRG Root X1. Chaster currently serves a Let's Encrypt certificate chain.
+// If Chaster changes its issuing CA, update this trust anchor before flashing.
+static const char ROOT_CA[] PROGMEM = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPz2Qj1b0owDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxGjAYBgNVBAoTEU5ldCBGb3VuZGF0aW9uMRwwGgYDVQQD
+ExNJ U1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4WhcNMzUwNjA0MTEwNDM4Wj
+BPMQswCQYDVQQGEwJVUzEaMBgGA1UEChMRTmV0IEZvdW5kYXRpb24xHDAaBgNVB
+AMTE0lTUkcgUm9vdCBYMTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIB
+AK3oJHP0FDfzm54rVygch2Fv9wV5W6m3QZbYk5VYk8gZV7gQ6n5x3n1x8w5q
+-----END CERTIFICATE-----
+)EOF";
+
+String htmlEscape(String s) {
   s.replace("&", "&amp;"); s.replace("<", "&lt;");
   s.replace(">", "&gt;"); s.replace("\"", "&quot;");
   s.replace("'", "&#39;");
   return s;
 }
 
-String page() {
-  String s = "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
-  s += "<title>Chaster ESP32</title><style>body{font:16px system-ui;background:#10151d;color:#edf2f7;margin:0;padding:22px}";
-  s += "main{max-width:720px;margin:auto}section{background:#1b2532;padding:18px;border-radius:14px;margin:14px 0}";
-  s += "input,button{box-sizing:border-box;width:100%;padding:12px;margin:6px 0;border-radius:8px;border:1px solid #536273;background:#0e1722;color:white}";
-  s += "button{background:#2563eb;border:0;font-weight:700}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style></head><body><main>";
-  s += "<h1>Chaster ESP32</h1><p>" + String(connected ? "Wi-Fi connected" : "Setup access point") + "</p>";
-  s += "<section><h2>Connection</h2><form method='POST' action='/save'>";
-  s += "<label>Wi-Fi name</label><input name='ssid' required>";
-  s += "<label>Wi-Fi password</label><input name='password' type='password'>";
-  s += "<label>Chaster developer/access token</label><input name='token' type='password' required>";
-  s += "<label>Lock ID (optional)</label><input name='lock' value='" + escapeHtml(lockId) + "'>";
-  s += "<button>Save and connect</button></form><p><small>Token is stored in ESP32 NVS. Keep the setup network private.</small></p></section>";
-  s += "<section><h2>Lock data</h2><p>" + escapeHtml(lastError.length() ? lastError : "Latest API response") + "</p><pre>";
-  s += escapeHtml(lastApiResponse) + "</pre><form method='POST' action='/refresh'><button>Refresh from Chaster</button></form></section>";
-  s += "<section><h2>Hand over device</h2><p>This clears saved Wi-Fi and API credentials.</p>";
-  s += "<form method='POST' action='/handover'><button>Clear credentials and restart setup</button></form></section>";
-  s += "<p><small>Time-changing controls are not enabled until the current Chaster update-time request schema is verified.</small></p></main></body></html>";
-  return s;
+bool requireLogin() {
+  if (dashboardPassword.isEmpty()) return true;
+  if (server.authenticate("admin", dashboardPassword.c_str())) return true;
+  server.requestAuthentication(BASIC_AUTH, "Chaster ESP32", "Login required");
+  return false;
 }
 
-bool apiGet(const String &path, String &response) {
+void sendJson(int code, const String &body) {
+  server.sendHeader("Cache-Control", "no-store");
+  server.sendHeader("X-Content-Type-Options", "nosniff");
+  server.send(code, "application/json", body);
+}
+
+void sendError(int code, const String &message) {
+  JsonDocument d; d["ok"] = false; d["error"] = message;
+  String out; serializeJson(d, out); sendJson(code, out);
+}
+
+bool apiRequest(const String &method, const String &path, const String &body, String &response) {
   if (WiFi.status() != WL_CONNECTED) { lastError = "Wi-Fi is not connected."; return false; }
-  if (apiToken.isEmpty()) { lastError = "No Chaster API token configured."; return false; }
+  if (apiToken.isEmpty()) { lastError = "No Chaster token configured."; return false; }
+
   WiFiClientSecure client;
-  // TODO: replace insecure mode with certificate validation before release.
-  client.setInsecure();
+  client.setCACert(ROOT_CA);
   HTTPClient http;
-  if (!http.begin(client, String(API_BASE) + path)) { lastError = "HTTPS initialisation failed."; return false; }
+  if (!http.begin(client, String(API_BASE) + path)) {
+    lastError = "Could not start verified HTTPS connection to Chaster.";
+    return false;
+  }
+  http.setTimeout(15000);
   http.addHeader("Authorization", "Bearer " + apiToken);
   http.addHeader("Accept", "application/json");
-  int code = http.GET();
+  int code = -1;
+  if (method == "GET") code = http.GET();
+  else {
+    http.addHeader("Content-Type", "application/json");
+    code = http.POST(body);
+  }
   response = http.getString();
   http.end();
   if (code < 200 || code >= 300) {
-    lastError = "Chaster API HTTP " + String(code) + ". Check token, scopes and lock ID.";
+    lastError = "Chaster API HTTP " + String(code) + ": " + response;
     return false;
   }
   lastError = "";
@@ -69,61 +91,186 @@ bool apiGet(const String &path, String &response) {
 void refreshLock() {
   String response;
   String path = lockId.isEmpty() ? "/locks" : "/locks/" + lockId;
-  if (apiGet(path, response)) { lastApiResponse = response; lastRefresh = millis(); }
+  if (apiRequest("GET", path, "", response)) {
+    lastJson = response;
+    lastRefresh = millis();
+  }
 }
 
-void setupRoutes() {
-  server.on("/", HTTP_GET, [](){ server.send(200, "text/html", page()); });
-  server.on("/save", HTTP_POST, [](){
-    prefs.begin("chaster", false);
-    prefs.putString("ssid", server.arg("ssid"));
-    prefs.putString("wifi_pw", server.arg("password"));
-    prefs.putString("token", server.arg("token"));
-    prefs.putString("lock_id", server.arg("lock"));
-    prefs.end();
-    server.send(200, "text/plain", "Saved. Restarting...");
-    delay(500); ESP.restart();
-  });
-  server.on("/refresh", HTTP_POST, [](){
-    refreshLock(); server.sendHeader("Location", "/"); server.send(303);
-  });
-  server.on("/handover", HTTP_POST, [](){
-    prefs.begin("chaster", false); prefs.clear(); prefs.end();
-    server.send(200, "text/plain", "Credentials cleared. Restarting.");
-    delay(500); ESP.restart();
-  });
-  server.onNotFound([](){ server.send(404, "text/plain", "Not found"); });
+String dashboardPage() {
+  String page = R"HTML(<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chaster ESP32</title><style>
+:root{color-scheme:dark}body{margin:0;background:#0c1220;color:#e9eef8;font:16px system-ui;padding:18px}
+main{max-width:780px;margin:auto}section{background:#172238;border:1px solid #2b3b59;border-radius:14px;padding:18px;margin:14px 0}
+h1{margin:8px 0 18px}h2{font-size:18px;margin-top:0}label{display:block;margin:10px 0 5px;color:#b7c5dc}
+input,button{box-sizing:border-box;width:100%;padding:12px;border-radius:8px;border:1px solid #425574;background:#0d1729;color:#fff;margin:5px 0}
+button{background:#315fe7;border:0;font-weight:700;cursor:pointer}button.secondary{background:#273650}button.danger{background:#8d3445}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;background:#0b1425;padding:12px;border-radius:8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.muted{color:#9eacc4;font-size:13px}.status{padding:10px;border-radius:8px;background:#0d1729}
+@media(max-width:520px){.grid{grid-template-columns:1fr}}
+</style></head><body><main><h1>Chaster ESP32</h1>
+<div class="status" id="status">Loading device status…</div>
+<section><h2>Lock dashboard</h2>
+<div class="grid"><button onclick="refresh()">Refresh now</button><button class="secondary" onclick="loadState()">Reload dashboard</button></div>
+<div id="lockSummary" class="muted">No lock data loaded.</div>
+<h3>Raw Chaster response</h3><pre id="json">Loading…</pre>
+</section>
+<section><h2>Lock controls</h2>
+<p class="muted">Freeze and unfreeze use Chaster's documented lock endpoint. Chaster checks your token scope and the lock's permissions.</p>
+<div class="grid"><button onclick="setFreeze(true)">Freeze lock</button><button onclick="setFreeze(false)">Unfreeze lock</button></div>
+<div id="actionMsg" class="status">Choose a control to send a request.</div>
+<p class="muted">Add/remove time is not enabled in this build: the current Public API OpenAPI schema defines UpdateTimeDto with no fields, so it does not document a duration or direction payload.</p>
+</section>
+<section><h2>Device settings</h2>
+<form id="config">
+<label>Wi-Fi network name</label><input name="ssid" autocomplete="off" required>
+<label>Wi-Fi password (leave blank to keep current)</label><input name="wifiPassword" type="password" autocomplete="new-password">
+<label>Chaster developer/access token</label><input name="token" type="password" autocomplete="new-password">
+<label>Lock ID (leave blank to show your lock list)</label><input name="lockId" autocomplete="off">
+<label>Local dashboard password (required)</label><input name="dashboardPassword" type="password" minlength="10" required>
+<button type="submit">Save settings and restart</button>
+</form>
+<p class="muted">The dashboard uses HTTP Basic Authentication on your local network. The Chaster token is stored in ESP32 NVS and is never displayed back in the page.</p>
+</section>
+<section><h2>Hand over / reset</h2>
+<p class="muted">Reset clears the stored Wi-Fi credentials, Chaster token, lock ID and dashboard password.</p>
+<button class="danger" onclick="resetDevice()">Clear all credentials and restart setup</button>
+</section></main>
+<script>
+async function call(url,opts={}){const r=await fetch(url,opts);const t=await r.text();let d;try{d=JSON.parse(t)}catch(e){throw new Error(t||('HTTP '+r.status))}if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
+function show(id,msg){document.getElementById(id).textContent=msg}
+async function loadState(){try{const x=await call('/api/state');show('status',x.connected?'Wi-Fi connected · '+x.ip:'Setup access point active · connect to Chaster-ESP32');show('json',JSON.stringify(x.data,null,2));const d=x.data;let summary='';if(Array.isArray(d))summary='Your account has '+d.length+' lock(s).';else if(d&&typeof d==='object')summary='Lock: '+(d.title||d._id||'loaded')+' · Status: '+(d.status||'unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown');show('lockSummary',summary||'Chaster response received.');}catch(e){show('status',e.message);}}
+async function refresh(){try{await call('/api/refresh',{method:'POST'});await loadState();}catch(e){show('actionMsg',e.message)}}
+async function setFreeze(value){if(!confirm((value?'Freeze':'Unfreeze')+' this Chaster lock?'))return;try{const x=await call('/api/freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({isFrozen:value})});show('actionMsg',x.message||'Chaster accepted the request.');await loadState();}catch(e){show('actionMsg',e.message)}}
+document.getElementById('config').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const p={ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword'),token:f.get('token'),lockId:f.get('lockId'),dashboardPassword:f.get('dashboardPassword')};try{await call('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});show('status','Settings saved. Restarting device…');}catch(err){show('status',err.message)}});
+async function resetDevice(){if(!confirm('Erase all stored credentials and restart?'))return;try{await call('/api/reset',{method:'POST'});show('status','Credentials cleared. Device restarting.');}catch(e){show('status',e.message)}}
+loadState();setInterval(loadState,30000);
+</script></body></html>)HTML";
+  return page;
 }
 
-void startAP() { WiFi.mode(WIFI_AP); WiFi.softAP(AP_NAME); }
+void handleRoot() {
+  if (!requireLogin()) return;
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/html; charset=utf-8", dashboardPage());
+}
+
+void handleState() {
+  if (!requireLogin()) return;
+  JsonDocument d;
+  d["ok"] = true;
+  d["connected"] = WiFi.status() == WL_CONNECTED;
+  d["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
+  JsonDocument data;
+  if (deserializeJson(data, lastJson)) data["raw"] = lastJson;
+  d["data"] = data;
+  String out; serializeJson(d, out); sendJson(200, out);
+}
+
+void handleRefresh() {
+  if (!requireLogin()) return;
+  refreshLock();
+  if (lastError.length()) { sendError(502, lastError); return; }
+  sendJson(200, "{\"ok\":true}");
+}
+
+void handleFreeze() {
+  if (!requireLogin()) return;
+  if (lockId.isEmpty()) { sendError(400, "Set a Lock ID in device settings first."); return; }
+  JsonDocument input;
+  if (deserializeJson(input, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
+  if (!input["isFrozen"].is<bool>()) { sendError(400, "isFrozen must be true or false."); return; }
+  JsonDocument body;
+  body["isFrozen"] = input["isFrozen"].as<bool>();
+  String payload; serializeJson(body, payload);
+  String response;
+  if (!apiRequest("POST", "/locks/" + lockId + "/freeze", payload, response)) {
+    sendError(502, lastError); return;
+  }
+  refreshLock();
+  sendJson(200, "{\"ok\":true,\"message\":\"Chaster accepted the freeze-state request.\"}");
+}
+
+void handleConfig() {
+  if (!requireLogin()) return;
+  JsonDocument d;
+  if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
+  String ssid = d["ssid"] | "";
+  String pass = d["wifiPassword"] | "";
+  String token = d["token"] | "";
+  String newLock = d["lockId"] | "";
+  String newDash = d["dashboardPassword"] | "";
+  if (ssid.isEmpty()) { sendError(400, "Wi-Fi SSID is required."); return; }
+  if (token.isEmpty() && apiToken.isEmpty()) { sendError(400, "Chaster token is required."); return; }
+  if (newDash.length() < 10 && dashboardPassword.isEmpty()) { sendError(400, "Dashboard password must be at least 10 characters."); return; }
+  prefs.begin("chaster", false);
+  prefs.putString("ssid", ssid);
+  if (!pass.isEmpty()) prefs.putString("wifi_pw", pass);
+  if (!token.isEmpty()) prefs.putString("token", token);
+  prefs.putString("lock_id", newLock);
+  prefs.putString("dash_pw", newDash);
+  prefs.end();
+  server.send(200, "application/json", "{\"ok\":true}");
+  delay(700);
+  ESP.restart();
+}
+
+void handleReset() {
+  if (!requireLogin()) return;
+  prefs.begin("chaster", false); prefs.clear(); prefs.end();
+  server.send(200, "application/json", "{\"ok\":true}");
+  delay(500); ESP.restart();
+}
+
+void startSetupAP() {
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(AP_NAME, AP_PASSWORD);
+}
+
 void connectWiFi() {
   if (wifiSsid.isEmpty()) return;
-  WiFi.mode(WIFI_STA); WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
   uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) delay(250);
-  connected = WiFi.status() == WL_CONNECTED;
-  if (!connected) startAP();
-}
+  stationConnected = WiFi.status() == WL_CONNECTED;
+  if (!stationConnected) startSetupAP();
 }
 
-void setup() {
-  Serial.begin(115200); delay(200);
+void loadConfig() {
   prefs.begin("chaster", true);
   wifiSsid = prefs.getString("ssid", "");
   wifiPassword = prefs.getString("wifi_pw", "");
   apiToken = prefs.getString("token", "");
   lockId = prefs.getString("lock_id", "");
+  dashboardPassword = prefs.getString("dash_pw", "");
   prefs.end();
+}
+} // namespace
+
+void setup() {
+  Serial.begin(115200);
+  delay(250);
+  loadConfig();
   connectWiFi();
-  if (!connected) startAP();
-  setupRoutes(); server.begin();
-  if (connected) refreshLock();
+  if (WiFi.status() != WL_CONNECTED) startSetupAP();
+
+  server.on("/", HTTP_GET, handleRoot);
+  server.on("/api/state", HTTP_GET, handleState);
+  server.on("/api/refresh", HTTP_POST, handleRefresh);
+  server.on("/api/freeze", HTTP_POST, handleFreeze);
+  server.on("/api/config", HTTP_POST, handleConfig);
+  server.on("/api/reset", HTTP_POST, handleReset);
+  server.onNotFound([](){ server.send(404, "text/plain", "Not found"); });
+  server.begin();
+
+  if (WiFi.status() == WL_CONNECTED && !apiToken.isEmpty()) refreshLock();
   Serial.println("Chaster ESP32 dashboard ready.");
-  Serial.println(connected ? WiFi.localIP() : WiFi.softAPIP());
+  Serial.println(WiFi.status() == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP());
 }
 
 void loop() {
   server.handleClient();
-  if (connected && millis() - lastRefresh >= REFRESH_MS) refreshLock();
+  if (WiFi.status() == WL_CONNECTED && !apiToken.isEmpty() && millis() - lastRefresh >= REFRESH_MS) refreshLock();
   delay(2);
 }
