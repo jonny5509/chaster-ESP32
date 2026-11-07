@@ -8,7 +8,7 @@ An ESP32-hosted, mobile-friendly dashboard for reading Chaster lock data and usi
 - Stores Wi-Fi details, Chaster token, optional lock ID and local dashboard password in ESP32 NVS
 - Uses Chaster Public API Bearer-token authentication
 - Reads `GET /locks` when no lock ID is set, or `GET /locks/{lockId}` for a selected lock\n- Lets you select a lock from the returned account lock list\n- Loads recent lock history with `POST /locks/{lockId}/history`
-- Refreshes the Chaster data every 30 seconds
+- Refreshes the Chaster data every 30 seconds\n- Displays elapsed and remaining lock time from Chaster's start/end timestamps
 - Freeze/unfreeze controls using `POST /locks/{lockId}/freeze` with the documented `{ "isFrozen": true|false }` body
 - HTTP Basic Authentication for the local dashboard and its API routes
 - Clear-credentials action for device handover/reset
