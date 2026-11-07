@@ -228,8 +228,8 @@ void handleConfig() {
   if (newDash.length() < 10 && dashboardPassword.length() == 0) { sendError(400, "Dashboard password must be at least 10 characters."); return; }
   prefs.begin("chaster", false);
   prefs.putString("ssid", ssid);
-  if (!pass.length() == 0) prefs.putString("wifi_pw", pass);
-  if (!token.length() == 0) prefs.putString("token", token);
+  if (pass.length() > 0) prefs.putString("wifi_pw", pass);
+  if (token.length() > 0) prefs.putString("token", token);
   prefs.putString("lock_id", newLock);
   prefs.putString("dash_pw", newDash);
   prefs.end();
@@ -289,7 +289,7 @@ void setup() {
   server.onNotFound([](){ server.send(404, "text/plain", "Not found"); });
   server.begin();
 
-  if (WiFi.status() == WL_CONNECTED && !apiToken.length() == 0) refreshLock();
+  if (WiFi.status() == WL_CONNECTED && apiToken.length() > 0) refreshLock();
   Serial.println("Chaster ESP32 dashboard ready.");
   Serial.println(WiFi.status() == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP());
 }
