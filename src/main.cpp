@@ -111,7 +111,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;b
 <section><h2>Lock dashboard</h2>
 <div class="grid"><button onclick="refresh()">Refresh now</button><button class="secondary" onclick="loadState()">Reload dashboard</button></div>
 <div id="lockSummary" class="muted">No lock data loaded.</div><div id="timer" class="status">Time passed: — · Time remaining: —</div>
-<label for="lockSelect">Choose a lock from your account</label><select id="lockSelect"><option value="">All locks</option></select><button class="secondary" onclick="chooseLock()">Open selected lock</button>
+<label for="lockSelect">Choose a lock from your account</label><select id="lockSelect"><option value="">All locks</option></select><div class="grid"><button class="secondary" onclick="chooseLock()">Open selected lock</button><button class="secondary" onclick="showLockList()">Back to lock list</button></div>
 <h3>Raw Chaster response</h3><pre id="json">Loading…</pre>
 </section>
 <section><h2>Lock history</h2><button class="secondary" onclick="loadHistory()">Load recent history</button><pre id="history">Choose a lock to view its recent history.</pre></section>
@@ -151,6 +151,7 @@ let startMs=0,endMs=0;
 function humanDuration(ms){if(!Number.isFinite(ms))return '—';const neg=ms<0;let n=Math.floor(Math.abs(ms)/1000);const days=Math.floor(n/86400);n%=86400;const hours=Math.floor(n/3600);n%=3600;const mins=Math.floor(n/60);const secs=n%60;return (neg?'-':'')+(days?days+'d ':'')+hours+'h '+mins+'m '+secs+'s';}
 function renderTimer(){const now=Date.now();const elapsed=startMs?Math.max(0,now-startMs):NaN;const remaining=endMs?endMs-now:NaN;show('timer','Time passed: '+humanDuration(elapsed)+' · Time remaining: '+humanDuration(remaining));}
 async function chooseLock(){const id=document.getElementById('lockSelect').value;if(!id){show('actionMsg','Choose a specific lock first.');return;}try{await call('/api/select-lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lockId:id})});await loadState();show('actionMsg','Selected lock loaded.');}catch(e){show('actionMsg',e.message);}}
+async function showLockList(){try{await call('/api/select-lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lockId:''})});await loadState();show('actionMsg','Lock list loaded.');}catch(e){show('actionMsg',e.message);}}
 async function loadHistory(){try{const x=await call('/api/history',{method:'POST'});show('history',JSON.stringify(x.data,null,2));}catch(e){show('history',e.message);}}
 async function changeTime(add){const h=Number(document.getElementById('timeHours').value);const m=Number(document.getElementById('timeMinutes').value);if(!Number.isInteger(h)||!Number.isInteger(m)||h<0||m<0||m>59||(h===0&&m===0)){show('actionMsg','Enter a positive duration.');return;}const seconds=(h*3600+m*60)*(add?1:-1);if(!confirm((add?'Add ':'Remove ')+h+'h '+m+'m '+(add?'to':'from')+' this lock?'))return;try{const x=await call('/api/update-time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:seconds})});show('actionMsg',x.message||'Chaster accepted the time-change request.');await refresh();}catch(e){show('actionMsg',e.message);}}
 document.getElementById('config').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target);const p={ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword'),token:f.get('token'),lockId:f.get('lockId'),dashboardPassword:f.get('dashboardPassword'),mode:f.get('mode')};try{await call('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});show('status','Settings saved. Restarting device…');}catch(err){show('status',err.message)}});
@@ -233,7 +234,6 @@ void handleSelectLock() {
   JsonDocument d;
   if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
   String selected = d["lockId"] | "";
-  if (selected.length() == 0) { sendError(400, "Lock ID is required."); return; }
   lockId = selected;
   prefs.begin("chaster", false); prefs.putString("lock_id", lockId); prefs.end();
   refreshLock();
