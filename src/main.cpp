@@ -144,7 +144,7 @@ form .submit{width:100%;margin-top:14px}.hidden{display:none!important}.notice{p
 </div></div></section><div class="footer">Chaster Control Centre · ESP32 keyholder edition</div></main><script>
 const $=id=>document.getElementById(id);let selectedLockId='',lockStart=0,lockEnd=0,lastData={};
 async function call(url,opts={}){const r=await fetch(url,opts);const t=await r.text();let d;try{d=JSON.parse(t)}catch(e){throw new Error(t||('HTTP '+r.status))}if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
-function msg(id,s,kind=''){const el=$(id);el.textContent=s;el.classList.toggle('error',kind==='error');el.classList.toggle('success',kind==='success')}
+function msg(id,s,kind=''){const el=$(id);if(!el)return;el.textContent=s;el.classList.toggle('error',kind==='error');el.classList.toggle('success',kind==='success')}
 function duration(ms){if(!Number.isFinite(ms))return '—';let n=Math.max(0,Math.floor(ms/1000)),d=Math.floor(n/86400);n%=86400;let h=Math.floor(n/3600);n%=3600;return (d?d+'d ':'')+(h?h+'h ':'')+Math.floor(n/60)+'m '+(n%60)+'s'}
 function dateValue(v){if(v===undefined||v===null||v==='')return 0;if(typeof v==='number')return v<1e12?v*1000:v;const n=Date.parse(v);return Number.isFinite(n)?n:0}
 function pick(o,keys){for(const k of keys){if(o&&o[k]!==undefined&&o[k]!==null&&o[k]!=='')return o[k]}return null}
@@ -154,7 +154,7 @@ function renderDetails(id,entries){const box=$(id);box.textContent='';for(const 
 function yesNo(v){return v===true?'Yes':v===false?'No':'Unknown'}
 function accountState(a){if(!a)return [['Account','Not supplied']];return [['Username',a.username],['User ID',a._id],['Online',a.online===true?'Online':a.online===false?'Offline':'Unknown'],['Role',a.role],['Joined',a.joinedAt],['Premium',yesNo(a.isPremium)],['Disabled',yesNo(a.isDisabled)],['Suspended',yesNo(a.isSuspended)]]}
 function renderData(raw){lastData=raw||{};const d=unwrap(lastData);const id=pick(d,['_id','id','lockId'])||selectedLockId;const title=pick(d,['title','name','lockName'])||'Selected Chaster lock';const status=pick(d,['status','state'])||'Unknown';const frozen=pick(d,['isFrozen','frozen']);const start=dateValue(pick(d,['startDate','startAt','startedAt','createdAt','start']));const end=dateValue(pick(d,['endDate','endAt','endsAt','expectedEndDate','end']));lockStart=start;lockEnd=end;
-msg('heroTitle',String(title));msg('heroSubtitle',String(pick(d,['description','message'])||'Live overview from your Chaster keyholder account'));msg('heroLockId',id?'LOCK ID · '+id:'No lock ID selected');msg('lockStatus',String(status).toUpperCase());msg('frozenState',frozen===true?'Frozen':frozen===false?'Active':'Unknown');msg('lastUpdate',new Date().toLocaleTimeString());
+msg('heroTitle',String(title));msg('heroSubtitle',String(pick(d,['description','message'])||'Live overview from your Chaster keyholder account'));msg('heroLockId',id?'LOCK ID · '+id:'No lock ID selected');msg('lockStatus',String(status).toUpperCase());msg('frozenState',frozen===true?'Frozen':frozen===false?'Active':'Unknown');
 renderDetails('sessionDetails',[
 ['Lock ID',id],['Title',title],['Status',status],['Lock type',pick(d,['lockType'])],
 ['Started',formatDate(start)],['Ends',formatDate(end)],['Minimum date',formatDate(dateValue(pick(d,['minDate'])))],
