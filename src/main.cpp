@@ -56,7 +56,13 @@ bool apiRequest(const String &method, const String &path, const String &body, St
   if (method == "GET") code = http.GET();
   else { http.addHeader("Content-Type", "application/json"); code = http.POST(body); }
   response = http.getString(); http.end();
-  if (code < 200 || code >= 300) { lastError = "Chaster API HTTP " + String(code) + ": " + response; return false; }
+  if (code < 200 || code >= 300) {
+    lastError = "Chaster API HTTP " + String(code) + ": " + response;
+    if (code == 401) lastError = "Chaster rejected the keyholder token (401). Check that it is valid and belongs to the keyholder account. Response: " + response;
+    else if (code == 403) lastError = "Chaster denied this action (403). Check the token has keyholder:write (and keyholder:read for lock refresh), and that this lock's permissions allow the keyholder to perform this specific action. Response: " + response;
+    else if (code == 404) lastError = "Chaster could not find this lock or endpoint (404). Check the selected lock belongs to this keyholder. Response: " + response;
+    return false;
+  }
   lastError = ""; return true;
 }
 void refreshLock() {
@@ -103,8 +109,8 @@ async function call(url,opts={}){const r=await fetch(url,opts);const t=await r.t
 function msg(id,s){$(id).textContent=s}
 function dur(ms){if(!Number.isFinite(ms))return '—';let n=Math.max(0,Math.floor(ms/1000));let d=Math.floor(n/86400);n%=86400;let h=Math.floor(n/3600);n%=3600;return d+'d '+h+'h '+Math.floor(n/60)+'m '+(n%60)+'s'}
 function timer(){msg('elapsed',lockStart?dur(Date.now()-lockStart):'—');msg('remaining',lockEnd?dur(lockEnd-Date.now()):'—')}
-function lockArray(d){return Array.isArray(d)?d:(d&&Array.isArray(d.locks)?d.locks:null)}
-function renderData(d){$('lockData').textContent=JSON.stringify(d,null,2);const arr=lockArray(d),sel=$('lockSelect'),old=sel.value; if(arr){sel.innerHTML='<option value="">All locks</option>';arr.forEach(x=>{if(!x||!x._id)return;let o=document.createElement('option');o.value=x._id;o.textContent=(x.title||x._id)+' · '+(x.status||'');sel.appendChild(o)});sel.value=old;lockStart=0;lockEnd=0;msg('lockSummary','Found '+arr.length+' lock(s). Select one to manage it.');}else if(d&&typeof d==='object'){const id=d._id||d.id||'';lockStart=Date.parse(d.startDate||d.startAt||'')||0;lockEnd=Date.parse(d.endDate||d.endAt||'')||0;msg('lockSummary',(d.title||id||'Selected lock')+' · '+(d.status||'status unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown'));if(id){sel.innerHTML='';let o=document.createElement('option');o.value=id;o.textContent=d.title||id;sel.appendChild(o)}}timer()}
+function lockArray(d){if(Array.isArray(d))return d;if(!d||typeof d!=='object')return null;for(const k of ['locks','items','results','data']){const v=d[k];if(Array.isArray(v))return v;if(v&&typeof v==='object'){const a=lockArray(v);if(a)return a}}return null}
+function renderData(d){$('lockData').textContent=JSON.stringify(d,null,2);const arr=lockArray(d),sel=$('lockSelect'),old=sel.value; if(arr){sel.innerHTML='<option value="">All locks</option>';arr.forEach(x=>{if(!x)return;const id=x._id||x.id||x.lockId;if(!id)return;let o=document.createElement('option');o.value=id;o.textContent=(x.title||x.name||id)+' · '+(x.status||'');sel.appendChild(o)});sel.value=old;lockStart=0;lockEnd=0;msg('lockSummary','Found '+arr.length+' lock(s). Select one to manage it.');}else if(d&&typeof d==='object'){const id=d._id||d.id||d.lockId||'';lockStart=Date.parse(d.startDate||d.startAt||d.startedAt||'')||0;lockEnd=Date.parse(d.endDate||d.endAt||d.endsAt||'')||0;msg('lockSummary',(d.title||id||'Selected lock')+' · '+(d.status||'status unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown'));if(id){sel.innerHTML='';let o=document.createElement('option');o.value=id;o.textContent=d.title||id;sel.appendChild(o)}}timer()}
 async function loadState(){try{const x=await call('/api/state');role=x.role||'wearer';if(!x.configured||x.handoverPending){$('setup').classList.remove('hidden');$('dashboard').classList.add('hidden');$('handoverInfo').classList.toggle('hidden',!x.handoverPending);$('setupTitle').textContent=x.handoverPending?'Keyholder setup':'Wearer setup';$('tokenLabel').textContent=x.handoverPending?'Your Chaster keyholder API token':'Wearer Chaster API token';msg('status',x.handoverPending?'Handover setup · connect to Chaster-ESP32':'Setup access point active · connect to Chaster-ESP32');return}
 $('setup').classList.add('hidden');$('dashboard').classList.remove('hidden');$('roleName').textContent=role==='keyholder'?'KEYHOLDER MODE':'WEARER MODE';$('handoverCard').classList.toggle('hidden',role!=='wearer');$('resetButton').classList.toggle('hidden',role==='keyholder');msg('status',x.connected?'Connected · '+x.ip:(x.apiError||'Wi-Fi disconnected'));renderData(x.data||{});}catch(e){msg('status',e.message)}}
 async function refresh(){try{await call('/api/refresh',{method:'POST'});await loadState()}catch(e){msg('actionMsg',e.message)}}
@@ -161,6 +167,7 @@ void handleUpdateTime() {
   if (!apiRequest("POST", "/locks/" + lockId + "/update-time", payload, response)) { sendError(502, lastError); return; }
   refreshLock(); JsonDocument out; out["ok"] = true;
   out["message"] = duration > 0 ? "Chaster accepted the add-time request." : "Chaster accepted the remove-time request.";
+  if (lastError.length()) out["message"] = String(out["message"].as<const char*>()) + " The lock could not be refreshed: " + lastError;
   String result; serializeJson(out, result); sendJson(200, result);
 }
 void handleSelectLock() {
