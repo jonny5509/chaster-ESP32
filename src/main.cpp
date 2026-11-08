@@ -122,7 +122,7 @@ button{background:var(--accent);border:0;font-weight:700;cursor:pointer}button.s
 
 <section id="dashboard" class="hidden">
 <div class="card"><div class="muted" id="roleName">WEARER MODE</div><div class="muted">TIME ELAPSED</div><div class="time" id="elapsed">—</div><div class="muted">TIME REMAINING</div><div class="time" id="remaining">—</div><div id="lockSummary" class="status">No lock selected.</div></div>
-<div class="card"><h2>Lock selection</h2><select id="lockSelect"><option value="">All locks</option></select><div class="grid"><button class="secondary" onclick="chooseLock()">Open selected lock</button><button class="secondary" onclick="showLockList()">Back to lock list</button></div><button class="secondary" onclick="refresh()">Refresh now</button><pre id="lockData">Loading Chaster data…</pre></div>
+<div class="card"><h2>Lock selection</h2><p class="muted">The selected lock ID is shared by wearer and keyholder. Changing it here updates both roles without changing either API token.</p><label>Selected Chaster lock ID</label><input id="lockIdInput" autocomplete="off" spellcheck="false" placeholder="Paste the Chaster lock ID"><button onclick="saveLockId()">Save lock ID for both roles</button><label>Or choose from locks returned by Chaster</label><select id="lockSelect"><option value="">All locks</option></select><div class="grid"><button class="secondary" onclick="chooseLock()">Open selected lock</button><button class="secondary" onclick="showLockList()">Back to lock list</button></div><button class="secondary" onclick="refresh()">Refresh now</button><pre id="lockData">Loading Chaster data…</pre></div>
 <div class="card"><h2>Lock controls</h2><div class="grid"><button onclick="freeze(true)">Freeze</button><button onclick="freeze(false)">Unfreeze</button></div><label>Hours</label><input id="hours" type="number" min="0" max="8760" value="1"><label>Minutes</label><input id="minutes" type="number" min="0" max="59" value="0"><div class="grid"><button onclick="changeTime(true)">Add time</button><button class="danger" onclick="changeTime(false)">Remove time</button></div><div id="actionMsg" class="notice">Actions are sent to Chaster using the token for the active role.</div></div>
 <div class="card"><h2>Lock history</h2><button class="secondary" onclick="loadHistory()">Load recent history</button><pre id="history">Choose a lock to view its history.</pre></div>
 <div id="handoverCard" class="card"><h2>Hand Over</h2><p class="muted">Preserve the wearer token privately, clear the current Wi-Fi and previous keyholder token, and restart setup so the keyholder can enter their own Wi-Fi and Chaster token. The keyholder will set the shared lock ID used by both roles.</p><button class="danger" onclick="handover()">Hand Over to Keyholder</button></div>
@@ -136,12 +136,13 @@ function msg(id,s){$(id).textContent=s}
 function dur(ms){if(!Number.isFinite(ms))return '—';let n=Math.max(0,Math.floor(ms/1000));let d=Math.floor(n/86400);n%=86400;let h=Math.floor(n/3600);n%=3600;return d+'d '+h+'h '+Math.floor(n/60)+'m '+(n%60)+'s'}
 function timer(){msg('elapsed',lockStart?dur(Date.now()-lockStart):'—');msg('remaining',lockEnd?dur(lockEnd-Date.now()):'—')}
 function lockArray(d){if(Array.isArray(d))return d;if(!d||typeof d!=='object')return null;for(const k of ['locks','items','results','data']){const v=d[k];if(Array.isArray(v))return v;if(v&&typeof v==='object'){const a=lockArray(v);if(a)return a}}return null}
-function renderData(d){$('lockData').textContent=JSON.stringify(d,null,2);const arr=lockArray(d),sel=$('lockSelect'),old=sel.value; if(arr){sel.innerHTML='<option value="">All locks</option>';arr.forEach(x=>{if(!x)return;const id=x._id||x.id||x.lockId;if(!id)return;let o=document.createElement('option');o.value=id;o.textContent=(x.title||x.name||id)+' · '+(x.status||'');sel.appendChild(o)});sel.value=old;lockStart=0;lockEnd=0;msg('lockSummary','Found '+arr.length+' lock(s). Select one to manage it.');}else if(d&&typeof d==='object'){const id=d._id||d.id||d.lockId||'';lockStart=Date.parse(d.startDate||d.startAt||d.startedAt||'')||0;lockEnd=Date.parse(d.endDate||d.endAt||d.endsAt||'')||0;msg('lockSummary',(d.title||id||'Selected lock')+' · '+(d.status||'status unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown'));if(id){sel.innerHTML='';let o=document.createElement('option');o.value=id;o.textContent=d.title||id;sel.appendChild(o)}}timer()}
+function renderData(d){$('lockData').textContent=JSON.stringify(d,null,2);const arr=lockArray(d),sel=$('lockSelect'),old=sel.value; if(!$('lockIdInput').matches(':focus'))$('lockIdInput').value=d&&typeof d==='object'?(d._id||d.id||d.lockId||$('lockIdInput').value):$('lockIdInput').value; if(arr){sel.innerHTML='<option value="">All locks</option>';arr.forEach(x=>{if(!x)return;const id=x._id||x.id||x.lockId;if(!id)return;let o=document.createElement('option');o.value=id;o.textContent=(x.title||x.name||id)+' · '+(x.status||'');sel.appendChild(o)});sel.value=old;lockStart=0;lockEnd=0;msg('lockSummary','Found '+arr.length+' lock(s). Select one to manage it.');}else if(d&&typeof d==='object'){const id=d._id||d.id||d.lockId||'';lockStart=Date.parse(d.startDate||d.startAt||d.startedAt||'')||0;lockEnd=Date.parse(d.endDate||d.endAt||d.endsAt||'')||0;msg('lockSummary',(d.title||id||'Selected lock')+' · '+(d.status||'status unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown'));if(id){sel.innerHTML='';let o=document.createElement('option');o.value=id;o.textContent=d.title||id;sel.appendChild(o)}}timer()}
 async function loadState(){try{const x=await call('/api/state');role=x.role||'wearer';if(!x.configured||x.handoverPending){$('setup').classList.remove('hidden');$('dashboard').classList.add('hidden');$('handoverInfo').classList.toggle('hidden',!x.handoverPending);$('setupTitle').textContent=x.handoverPending?'Keyholder setup':'Wearer setup';$('tokenLabel').textContent=x.handoverPending?'Keyholder Chaster developer token':'Wearer Chaster developer token';msg('status',x.handoverPending?'Handover setup · connect to Chaster-ESP32':'Setup access point active · connect to Chaster-ESP32');return}
 $('setup').classList.add('hidden');$('dashboard').classList.remove('hidden');$('roleName').textContent=role==='keyholder'?'KEYHOLDER MODE':'WEARER MODE';$('handoverCard').classList.toggle('hidden',role!=='wearer');$('resetButton').classList.toggle('hidden',role==='keyholder');$('tokenUpdate').classList.toggle('hidden',role!=='keyholder');$('passwordSetup').classList.toggle('hidden',!x.needsPassword);if(!$('wifiSsid').value)$('wifiSsid').value=x.wifiSsid||'';msg('status',x.apiError?((x.connected?'Wi-Fi connected · '+x.ip:'Wi-Fi disconnected')+' · Chaster: '+x.apiError):(x.connected?'Connected · '+x.ip:'Wi-Fi disconnected'));renderData(x.data||{});}catch(e){msg('status',e.message)}}
 async function refresh(){try{await call('/api/refresh',{method:'POST'});await loadState()}catch(e){msg('actionMsg',e.message)}}
-async function chooseLock(){let id=$('lockSelect').value;if(!id){msg('actionMsg','Select a specific lock first.');return}try{await call('/api/select-lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lockId:id})});await loadState()}catch(e){msg('actionMsg',e.message)}}
-async function showLockList(){try{await call('/api/select-lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lockId:''})});await loadState()}catch(e){msg('actionMsg',e.message)}}
+async function saveLockId(){const id=$('lockIdInput').value.trim();if(!id){msg('actionMsg','Enter a Chaster lock ID.');return}try{await call('/api/select-lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lockId:id})});msg('actionMsg','Shared lock ID saved for wearer and keyholder.');await loadState()}catch(e){msg('actionMsg',e.message)}}
+async function chooseLock(){let id=$('lockSelect').value;if(!id){msg('actionMsg','Select a specific lock first.');return}$('lockIdInput').value=id;await saveLockId()}
+async function showLockList(){try{await call('/api/select-lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lockId:''})});$('lockIdInput').value='';await loadState()}catch(e){msg('actionMsg',e.message)}}
 async function freeze(value){if(!confirm((value?'Freeze':'Unfreeze')+' this lock?'))return;try{const x=await call('/api/freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({isFrozen:value})});msg('actionMsg',x.message||'Chaster accepted the request.');await refresh()}catch(e){msg('actionMsg',e.message)}}
 async function changeTime(add){let h=Number($('hours').value),m=Number($('minutes').value);if(!Number.isInteger(h)||!Number.isInteger(m)||h<0||m<0||m>59||(!h&&!m)){msg('actionMsg','Enter a positive duration.');return}let sec=(h*3600+m*60)*(add?1:-1);if(!confirm((add?'Add ':'Remove ')+h+'h '+m+'m?'))return;try{const x=await call('/api/update-time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:sec})});msg('actionMsg',x.message||'Chaster accepted the request.');await refresh()}catch(e){msg('actionMsg',e.message)}}
 async function loadHistory(){try{let x=await call('/api/history',{method:'POST'});msg('history',JSON.stringify(x.data,null,2))}catch(e){msg('history',e.message)}}
@@ -216,16 +217,19 @@ void handleUpdateTime() {
 void handleSelectLock() {
   if (!requireAuth()) return;
   JsonDocument d; if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
-  lockId = d["lockId"] | "";
-  prefs.begin("chaster", false);
-  if (role == "keyholder") {
-    // A keyholder lock selection is shared with the wearer on the next handover/view.
-    prefs.putString("holder_lock_id", lockId); prefs.putString("wearer_lock_id", lockId);
-  } else {
-    prefs.putString("wearer_lock_id", lockId);
-    // Prevent the legacy lock_id migration from restoring a cleared selection after reboot.
-    prefs.remove("lock_id");
+  String requestedId = d["lockId"] | "";
+  requestedId.trim();
+  if (requestedId.length() > 128 || requestedId.indexOf("/") >= 0 || requestedId.indexOf("\\") >= 0 || requestedId.indexOf("?") >= 0 || requestedId.indexOf("#") >= 0) {
+    sendError(400, "Lock ID is invalid."); return;
   }
+  lockId = requestedId;
+  // Keep one canonical selection in both role slots so a keyholder can change
+  // the lock used by the wearer as well, without touching either role token.
+  prefs.begin("chaster", false);
+  prefs.putString("holder_lock_id", lockId);
+  prefs.putString("wearer_lock_id", lockId);
+  // Prevent legacy migration from restoring a stale selection after reboot.
+  prefs.remove("lock_id");
   prefs.end();
   refreshLock(); if (lastError.length()) { sendError(502, lastError); return; }
   sendJson(200, "{\"ok\":true}");
