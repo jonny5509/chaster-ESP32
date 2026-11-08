@@ -4,7 +4,7 @@ An ESP32-hosted, mobile-friendly dashboard for viewing and managing Chaster lock
 
 ## Included
 
-- Wi-Fi setup access point: `Chaster-ESP32` (default password: `chaster32`)
+- Wi-Fi setup access point: `Chaster-ESP32` (default password: `chaster32`); it is enabled only when the saved Wi-Fi connection cannot be established
 - Stores Wi-Fi details, Chaster token, optional lock ID, account mode and dashboard password in ESP32 NVS
 - Chaster Public API Bearer-token authentication
 - Wearer lock list and keyholder lock-search mode
@@ -13,7 +13,7 @@ An ESP32-hosted, mobile-friendly dashboard for viewing and managing Chaster lock
 - Freeze and unfreeze controls
 - Add/remove time controls using `POST /locks/{lockId}/update-time` with signed `duration` seconds
 - Recent history request
-- 30-second data refresh
+- 30-second data refresh, with failed API attempts throttled to avoid rapid retry loops
 - HTTP Basic Authentication for dashboard routes
 - Clear-credentials action
 - PlatformIO environments for ESP32, ESP32-C3, ESP32-S2 and ESP32-S3
@@ -70,7 +70,7 @@ This follows the request format supplied for this integration. Note that the cur
 
 ## Verification status
 
-The dashboard JavaScript has been syntax-checked, but this firmware has not yet been compiled with PlatformIO or tested on physical ESP32 hardware. The GitHub Actions workflow is configured to build four board environments when GitHub runs it. Verify the workflow result, board target, API scopes, API request bodies and lock permissions before relying on it.
+The dashboard JavaScript has been syntax-checked. The firmware has not yet been compiled with PlatformIO or tested on physical ESP32 hardware. A recent commit was not associated with a GitHub Actions run or status result when checked, so no successful build is claimed. Verify the workflow result, board target, API scopes, API request bodies and lock permissions before relying on it.
 
 ## References
 
