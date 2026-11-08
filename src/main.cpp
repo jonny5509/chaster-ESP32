@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
+#include <DNSServer.h>
 #include <Preferences.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -11,8 +12,12 @@ constexpr char AP_NAME[] = "Chaster-ESP32";
 constexpr char AP_PASSWORD[] = "chaster32";
 constexpr char API_BASE[] = "https://api.chaster.app";
 constexpr uint32_t REFRESH_MS = 30000;
+const IPAddress AP_IP(192,168,4,1), AP_GATEWAY(192,168,4,1), AP_SUBNET(255,255,255,0);
+bool setupAP = false;
+void startSetupAP();
 
 WebServer server(80);
+DNSServer dnsServer;
 Preferences prefs;
 String wifiSsid, wifiPassword, wearerToken, holderToken, lockId, dashboardPassword;
 String role = "wearer", lastJson = "{}", lastError;
@@ -121,6 +126,8 @@ loadState();setInterval(()=>{if(!$('dashboard').classList.contains('hidden'))loa
 </script></body></html>)HTML";
 }
 
+void handleScan() { JsonDocument d; JsonArray a=d["networks"].to<JsonArray>(); int n=WiFi.scanNetworks(false,true); for(int i=0;i<n;i++){ JsonObject o=a.add<JsonObject>(); o["ssid"]=WiFi.SSID(i); o["rssi"]=WiFi.RSSI(i); } WiFi.scanDelete(); String out; serializeJson(d,out); sendJson(200,out); }
+void captive() { server.sendHeader("Location","http://192.168.4.1/",true); server.send(302,"text/plain",""); }
 void handleRoot() {
   if (!requireLogin()) return;
   server.sendHeader("Cache-Control", "no-store");
@@ -225,12 +232,11 @@ void handleReset() {
   prefs.begin("chaster", false); prefs.clear(); prefs.end();
   sendJson(200, "{\"ok\":true}"); delay(500); ESP.restart();
 }
-void startSetupAP() { WiFi.mode(WIFI_AP); WiFi.softAP(AP_NAME, AP_PASSWORD); }
+void startSetupAP() { WiFi.mode(WIFI_AP_STA); WiFi.softAPConfig(AP_IP,AP_GATEWAY,AP_SUBNET); if(!setupAP) setupAP=WiFi.softAP(AP_NAME,AP_PASSWORD); dnsServer.start(53,"*",AP_IP); }
 void connectWiFi() {
-  if (!wifiSsid.length()) return;
-  WiFi.mode(WIFI_STA); WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
-  uint32_t started = millis(); while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) delay(250);
-  if (WiFi.status() != WL_CONNECTED) startSetupAP();
+  startSetupAP(); if (!wifiSsid.length()) return;
+  WiFi.mode(WIFI_AP_STA); WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+  uint32_t started = millis(); while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) { dnsServer.processNextRequest(); server.handleClient(); delay(50); }
 }
 void loadConfig() {
   prefs.begin("chaster", true);
@@ -246,9 +252,10 @@ void loadConfig() {
 } // namespace
 
 void setup() {
-  Serial.begin(115200); delay(250); loadConfig(); connectWiFi();
+  Serial.begin(115200); delay(250); loadConfig(); startSetupAP(); connectWiFi();
   if (WiFi.status() != WL_CONNECTED) startSetupAP();
   server.on("/", HTTP_GET, handleRoot);
+  server.on("/generate_204", HTTP_GET, captive); server.on("/hotspot-detect.html", HTTP_GET, captive); server.on("/connecttest.txt", HTTP_GET, captive); server.on("/api/scan", HTTP_GET, handleScan);
   server.on("/api/state", HTTP_GET, handleState);
   server.on("/api/refresh", HTTP_POST, handleRefresh);
   server.on("/api/freeze", HTTP_POST, handleFreeze);
@@ -258,14 +265,14 @@ void setup() {
   server.on("/api/config", HTTP_POST, handleConfig);
   server.on("/api/handover", HTTP_POST, handleHandover);
   server.on("/api/reset", HTTP_POST, handleReset);
-  server.onNotFound([](){ server.send(404, "text/plain", "Not found"); });
+  server.onNotFound(captive);
   server.begin();
   if (WiFi.status() == WL_CONNECTED && activeToken().length()) refreshLock();
   Serial.println("Chaster ESP32 dashboard ready.");
   Serial.println(WiFi.status() == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP());
 }
 void loop() {
-  server.handleClient();
+  dnsServer.processNextRequest(); server.handleClient();
   if (WiFi.status() == WL_CONNECTED && activeToken().length() && !handoverPending && millis() - lastRefresh >= REFRESH_MS) refreshLock();
   delay(2);
 }
