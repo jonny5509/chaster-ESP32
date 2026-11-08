@@ -66,8 +66,11 @@ bool apiRequest(const String &method, const String &path, const String &body, St
   if (code < 200 || code >= 300) {
     lastError = "Chaster API HTTP " + String(code) + ": " + response;
     if (code == 401) lastError = "Chaster rejected the " + role + " API token (401). Generate a fresh Chaster Public API developer token while signed into the account that owns this role, then re-enter it in setup. Check that the token is not expired or revoked. Response: " + response;
-    else if (code == 403) lastError = "Chaster denied this action (403). Check the token has keyholder:write (and keyholder:read for lock refresh), and that this lock's permissions allow the keyholder to perform this specific action. Response: " + response;
-    else if (code == 404) lastError = "Chaster could not find this lock or endpoint (404). Check the selected lock belongs to this keyholder. Response: " + response;
+    else if (code == 403) {
+      String scope = role == "keyholder" ? (method == "GET" ? "keyholder:read" : "keyholder:write") : (method == "GET" ? "locks:read" : "locks:write");
+      lastError = "Chaster denied this request (403). Check the active account token has the " + scope + " scope and that this lock permits the requested action for this role. Response: " + response;
+    }
+    else if (code == 404) lastError = "Chaster could not find this lock or endpoint (404). Check the selected lock ID and confirm it is accessible to the active Chaster account. Response: " + response;
     return false;
   }
   lastError = ""; return true;
@@ -348,6 +351,9 @@ void loop() {
     if (!setupAP) startSetupAP();
     WiFi.reconnect();
     lastWifiAttempt = millis();
+  }
+  if (WiFi.status() == WL_CONNECTED && setupAP && !handoverPending) {
+    dnsServer.stop(); WiFi.softAPdisconnect(true); setupAP = false;
   }
   if (WiFi.status() == WL_CONNECTED && activeToken().length() && !handoverPending && millis() - lastRefresh >= REFRESH_MS) refreshLock();
   delay(2);
