@@ -234,11 +234,9 @@ void handleSelectLock() {
     sendError(400, "Lock ID is invalid."); return;
   }
   lockId = requestedId;
-  // Keep one canonical selection in both role slots so a keyholder can change
-  // the lock used by the wearer as well, without touching either role token.
+  // Persist the one lock selected for this keyholder device.
   prefs.begin("chaster", false);
   prefs.putString("holder_lock_id", lockId);
-  prefs.putString("wearer_lock_id", lockId);
   // Prevent legacy migration from restoring a stale selection after reboot.
   prefs.remove("lock_id");
   prefs.end();
