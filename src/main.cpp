@@ -248,7 +248,7 @@ void handleConfig() {
   } else {
     prefs.putString("wearer_token", token); prefs.putString("wearer_lock_id", newLockId); prefs.putString("ssid", ssid); prefs.putString("dash_pw", newDashPassword);
     if (pass.length()) prefs.putString("wifi_pw", pass);
-    prefs.remove("dash_pw"); prefs.putString("role", "wearer");
+    prefs.putString("role", "wearer");
   }
   prefs.end();
   server.send(200, "application/json", "{\"ok\":true}");
