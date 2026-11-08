@@ -216,9 +216,13 @@ void handleReset() {
 }
 void startSetupAP() { WiFi.mode(WIFI_AP_STA); WiFi.softAPConfig(AP_IP,AP_GATEWAY,AP_SUBNET); if(!setupAP) setupAP=WiFi.softAP(AP_NAME,AP_PASSWORD); dnsServer.start(53,"*",AP_IP); }
 void connectWiFi() {
-  startSetupAP(); if (!wifiSsid.length()) return;
-  WiFi.mode(WIFI_AP_STA); WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
-  uint32_t started = millis(); while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) { dnsServer.processNextRequest(); server.handleClient(); delay(50); }
+  // Setup AP is only active during first-time setup, handover, or Wi-Fi failure.
+  if (!wifiSsid.length() || handoverPending) { startSetupAP(); return; }
+  WiFi.mode(WIFI_STA); WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+  uint32_t started = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - started < 20000) delay(100);
+  if (WiFi.status() != WL_CONNECTED) startSetupAP();
+  else { dnsServer.stop(); WiFi.softAPdisconnect(true); setupAP = false; }
 }
 void loadConfig() {
   prefs.begin("chaster", true);
