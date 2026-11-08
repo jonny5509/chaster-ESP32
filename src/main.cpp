@@ -42,7 +42,7 @@ bool requireAuth() {
   bool allowedWithoutPassword = !provisioned || uri == "/" || uri == "/api/state" ||
                                 uri == "/api/set-password" || (handoverPending && uri == "/api/config");
   if (allowedWithoutPassword) return true;
-  server.send(423, "application/json", "{\\"ok\\":false,\\"error\\":\\"Set a dashboard password before using device controls.\\"}");
+  server.send(423, "application/json", "{\"ok\":false,\"error\":\"Set a dashboard password before using device controls.\"}");
   return false;
 }
 
