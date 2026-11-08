@@ -89,12 +89,13 @@ button{background:var(--accent);border:0;font-weight:700;cursor:pointer}button.s
 .hidden{display:none!important}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;background:#0d192b;padding:12px;border-radius:10px}
 @media(max-width:560px){body{padding:12px}.grid{grid-template-columns:1fr}.card{padding:16px}}
 </style></head><body><main><h1>Chaster ESP32</h1><div id="status" class="status">Connecting…</div>
-<section id="setup" class="card hidden"><h2 id="setupTitle">Device setup</h2><div id="handoverInfo" class="notice hidden">Handover is ready. Your wearer's Chaster token remains stored privately on this device. Enter your own Wi-Fi and Chaster API token below.</div>
+<section id="setup" class="card hidden"><h2 id="setupTitle">Device setup</h2><div id="handoverInfo" class="notice hidden">Handover is ready. The wearer's developer token and lock ID remain stored privately. Enter your own Wi-Fi, developer token and lock ID below.</div>
 <form id="config"><label>Wi-Fi network name</label><input name="ssid" required autocomplete="off">
 <label>Wi-Fi password</label><input name="wifiPassword" type="password" autocomplete="new-password">
-<label id="tokenLabel">Chaster API token</label><input name="token" type="password" required autocomplete="new-password">
+<label id="tokenLabel">Chaster developer token</label><input name="token" type="password" required autocomplete="new-password">
+<label>Chaster lock ID</label><input name="lockId" required autocomplete="off" placeholder="Enter the lock ID for this role">
 
-<button type="submit" id="saveBtn">Save and connect</button></form><p class="muted">The token is stored in ESP32 NVS and is never displayed again.</p></section>
+<button type="submit" id="saveBtn">Save and connect</button></form><p class="muted">The developer token and lock ID are stored in ESP32 NVS for this role and are never displayed again.</p></section>
 
 <section id="dashboard" class="hidden">
 <div class="card"><div class="muted" id="roleName">WEARER MODE</div><div class="muted">TIME ELAPSED</div><div class="time" id="elapsed">—</div><div class="muted">TIME REMAINING</div><div class="time" id="remaining">—</div><div id="lockSummary" class="status">No lock selected.</div></div>
@@ -111,7 +112,7 @@ function dur(ms){if(!Number.isFinite(ms))return '—';let n=Math.max(0,Math.floo
 function timer(){msg('elapsed',lockStart?dur(Date.now()-lockStart):'—');msg('remaining',lockEnd?dur(lockEnd-Date.now()):'—')}
 function lockArray(d){if(Array.isArray(d))return d;if(!d||typeof d!=='object')return null;for(const k of ['locks','items','results','data']){const v=d[k];if(Array.isArray(v))return v;if(v&&typeof v==='object'){const a=lockArray(v);if(a)return a}}return null}
 function renderData(d){$('lockData').textContent=JSON.stringify(d,null,2);const arr=lockArray(d),sel=$('lockSelect'),old=sel.value; if(arr){sel.innerHTML='<option value="">All locks</option>';arr.forEach(x=>{if(!x)return;const id=x._id||x.id||x.lockId;if(!id)return;let o=document.createElement('option');o.value=id;o.textContent=(x.title||x.name||id)+' · '+(x.status||'');sel.appendChild(o)});sel.value=old;lockStart=0;lockEnd=0;msg('lockSummary','Found '+arr.length+' lock(s). Select one to manage it.');}else if(d&&typeof d==='object'){const id=d._id||d.id||d.lockId||'';lockStart=Date.parse(d.startDate||d.startAt||d.startedAt||'')||0;lockEnd=Date.parse(d.endDate||d.endAt||d.endsAt||'')||0;msg('lockSummary',(d.title||id||'Selected lock')+' · '+(d.status||'status unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown'));if(id){sel.innerHTML='';let o=document.createElement('option');o.value=id;o.textContent=d.title||id;sel.appendChild(o)}}timer()}
-async function loadState(){try{const x=await call('/api/state');role=x.role||'wearer';if(!x.configured||x.handoverPending){$('setup').classList.remove('hidden');$('dashboard').classList.add('hidden');$('handoverInfo').classList.toggle('hidden',!x.handoverPending);$('setupTitle').textContent=x.handoverPending?'Keyholder setup':'Wearer setup';$('tokenLabel').textContent=x.handoverPending?'Your Chaster keyholder API token':'Wearer Chaster API token';msg('status',x.handoverPending?'Handover setup · connect to Chaster-ESP32':'Setup access point active · connect to Chaster-ESP32');return}
+async function loadState(){try{const x=await call('/api/state');role=x.role||'wearer';if(!x.configured||x.handoverPending){$('setup').classList.remove('hidden');$('dashboard').classList.add('hidden');$('handoverInfo').classList.toggle('hidden',!x.handoverPending);$('setupTitle').textContent=x.handoverPending?'Keyholder setup':'Wearer setup';$('tokenLabel').textContent=x.handoverPending?'Keyholder Chaster developer token':'Wearer Chaster developer token';msg('status',x.handoverPending?'Handover setup · connect to Chaster-ESP32':'Setup access point active · connect to Chaster-ESP32');return}
 $('setup').classList.add('hidden');$('dashboard').classList.remove('hidden');$('roleName').textContent=role==='keyholder'?'KEYHOLDER MODE':'WEARER MODE';$('handoverCard').classList.toggle('hidden',role!=='wearer');$('resetButton').classList.toggle('hidden',role==='keyholder');msg('status',x.connected?'Connected · '+x.ip:(x.apiError||'Wi-Fi disconnected'));renderData(x.data||{});}catch(e){msg('status',e.message)}}
 async function refresh(){try{await call('/api/refresh',{method:'POST'});await loadState()}catch(e){msg('actionMsg',e.message)}}
 async function chooseLock(){let id=$('lockSelect').value;if(!id){msg('actionMsg','Select a specific lock first.');return}try{await call('/api/select-lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lockId:id})});await loadState()}catch(e){msg('actionMsg',e.message)}}
@@ -121,7 +122,7 @@ async function changeTime(add){let h=Number($('hours').value),m=Number($('minute
 async function loadHistory(){try{let x=await call('/api/history',{method:'POST'});msg('history',JSON.stringify(x.data,null,2))}catch(e){msg('history',e.message)}}
 async function handover(){if(!confirm('Hand over this device? The wearer token will remain stored privately. Wi-Fi and any keyholder token will be cleared.'))return;try{await call('/api/handover',{method:'POST'});msg('status','Handover started. Connect to the Chaster-ESP32 setup network.');setTimeout(loadState,1000)}catch(e){msg('actionMsg',e.message)}}
 async function resetDevice(){if(!confirm('Erase all Chaster credentials and Wi-Fi settings?'))return;try{await call('/api/reset',{method:'POST'});msg('status','Credentials cleared. Restarting…')}catch(e){msg('status',e.message)}}
-$('config').addEventListener('submit',async e=>{e.preventDefault();let f=new FormData(e.target),p={ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword'),token:f.get('token')};try{await call('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});msg('status','Saved. Restarting…')}catch(err){msg('status',err.message)}});
+$('config').addEventListener('submit',async e=>{e.preventDefault();let f=new FormData(e.target),p={ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword'),token:f.get('token'),lockId:f.get('lockId')};try{await call('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});msg('status','Saved. Restarting…')}catch(err){msg('status',err.message)}});
 loadState();setInterval(()=>{if(!$('dashboard').classList.contains('hidden'))loadState()},30000);setInterval(timer,1000);
 </script></body></html>)HTML";
 }
@@ -181,7 +182,7 @@ void handleUpdateTime() {
 void handleSelectLock() {
   JsonDocument d; if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
   lockId = d["lockId"] | "";
-  prefs.begin("chaster", false); prefs.putString("lock_id", lockId); prefs.end();
+  prefs.begin("chaster", false); prefs.putString(role == "keyholder" ? "holder_lock_id" : "wearer_lock_id", lockId); prefs.end();
   refreshLock(); if (lastError.length()) { sendError(502, lastError); return; }
   sendJson(200, "{\"ok\":true}");
 }
@@ -195,8 +196,8 @@ void handleHistory() {
 }
 void handleConfig() {
   JsonDocument d; if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
-  String ssid = d["ssid"] | ""; String pass = d["wifiPassword"] | ""; String token = d["token"] | "";
-  if (!ssid.length() || !token.length()) { sendError(400, "Wi-Fi SSID and Chaster token are required."); return; }
+  String ssid = d["ssid"] | ""; String pass = d["wifiPassword"] | ""; String token = d["token"] | ""; String newLockId = d["lockId"] | "";
+  if (!ssid.length() || !token.length() || !newLockId.length()) { sendError(400, "Wi-Fi SSID, Chaster developer token and lock ID are required."); return; }
   // Once wearer or keyholder credentials are provisioned, role and API credentials stay locked.
   // Only the explicit handover-pending state may accept the keyholder token.
   if (!handoverPending && (wearerToken.length() || holderToken.length())) {
@@ -204,11 +205,11 @@ void handleConfig() {
   }
   prefs.begin("chaster", false);
   if (handoverPending) {
-    prefs.putString("holder_token", token); prefs.putString("ssid", ssid);
+    prefs.putString("holder_token", token); prefs.putString("holder_lock_id", newLockId); prefs.putString("ssid", ssid);
     if (pass.length()) prefs.putString("wifi_pw", pass);
     prefs.putString("role", "keyholder"); prefs.putBool("handover", false);
   } else {
-    prefs.putString("wearer_token", token); prefs.putString("ssid", ssid);
+    prefs.putString("wearer_token", token); prefs.putString("wearer_lock_id", newLockId); prefs.putString("ssid", ssid);
     if (pass.length()) prefs.putString("wifi_pw", pass);
     prefs.remove("dash_pw"); prefs.putString("role", "wearer");
   }
@@ -220,7 +221,7 @@ void handleHandover() {
   if (role != "wearer" || !wearerToken.length() || handoverPending) { sendError(409, "Hand Over is available after wearer setup."); return; }
   prefs.begin("chaster", false);
   prefs.putString("role", "keyholder"); prefs.remove("ssid"); prefs.remove("wifi_pw");
-  prefs.remove("holder_token"); prefs.putBool("handover", true); prefs.remove("lock_id");
+  prefs.remove("holder_token"); prefs.remove("holder_lock_id"); prefs.putBool("handover", true);
   prefs.end();
   sendJson(200, "{\"ok\":true,\"handoverPending\":true}");
   delay(500); ESP.restart();
@@ -246,8 +247,9 @@ void loadConfig() {
   holderToken = prefs.getString("holder_token", "");
   // Migrate installations made by the earlier single-token firmware.
   if (!wearerToken.length()) wearerToken = prefs.getString("token", "");
-  lockId = prefs.getString("lock_id", "");
   role = prefs.getString("role", "wearer"); handoverPending = prefs.getBool("handover", false);
+  lockId = role == "keyholder" ? prefs.getString("holder_lock_id", "") : prefs.getString("wearer_lock_id", "");
+  if (!lockId.length()) lockId = prefs.getString("lock_id", "");
   prefs.end();
 }
 } // namespace
