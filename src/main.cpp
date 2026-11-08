@@ -285,11 +285,19 @@ void handleReset() {
   prefs.begin("chaster", false); prefs.clear(); prefs.end();
   sendJson(200, "{\"ok\":true}"); delay(500); ESP.restart();
 }
-void startSetupAP() { WiFi.mode(WIFI_AP_STA); WiFi.softAPConfig(AP_IP,AP_GATEWAY,AP_SUBNET); if(!setupAP) setupAP=WiFi.softAP(AP_NAME,AP_PASSWORD); dnsServer.start(53,"*",AP_IP); }
+void startSetupAP() {
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET);
+  if (!setupAP) {
+    setupAP = WiFi.softAP(AP_NAME, AP_PASSWORD);
+    dnsServer.start(53, "*", AP_IP);
+  }
+}
 void connectWiFi() {
   // Setup AP is only active during first-time setup, handover, or Wi-Fi failure.
   if (!wifiSsid.length() || handoverPending) { startSetupAP(); return; }
-  WiFi.mode(WIFI_STA); WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+  // Switching from AP+STA to STA tears down the setup AP; clear the flag so fallback recreates it.
+  WiFi.mode(WIFI_STA); setupAP = false; WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
   uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started < 20000) delay(100);
   if (WiFi.status() != WL_CONNECTED) startSetupAP();
@@ -311,7 +319,7 @@ void loadConfig() {
 } // namespace
 
 void setup() {
-  Serial.begin(115200); delay(250); loadConfig(); startSetupAP(); connectWiFi();
+  Serial.begin(115200); delay(250); loadConfig(); connectWiFi();
   if (WiFi.status() != WL_CONNECTED) startSetupAP();
   server.on("/", HTTP_GET, handleRoot);
   server.on("/generate_204", HTTP_GET, captive); server.on("/hotspot-detect.html", HTTP_GET, captive); server.on("/connecttest.txt", HTTP_GET, captive); server.on("/api/scan", HTTP_GET, handleScan);
@@ -334,6 +342,13 @@ void setup() {
 }
 void loop() {
   dnsServer.processNextRequest(); server.handleClient();
+  // Keep the setup AP available as a recovery path if the configured Wi-Fi drops later.
+  static uint32_t lastWifiAttempt = 0;
+  if (wifiSsid.length() && !handoverPending && WiFi.status() != WL_CONNECTED && millis() - lastWifiAttempt >= 15000) {
+    if (!setupAP) startSetupAP();
+    WiFi.reconnect();
+    lastWifiAttempt = millis();
+  }
   if (WiFi.status() == WL_CONNECTED && activeToken().length() && !handoverPending && millis() - lastRefresh >= REFRESH_MS) refreshLock();
   delay(2);
 }
