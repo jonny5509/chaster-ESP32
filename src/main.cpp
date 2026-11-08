@@ -223,6 +223,8 @@ void handleSelectLock() {
     prefs.putString("holder_lock_id", lockId); prefs.putString("wearer_lock_id", lockId);
   } else {
     prefs.putString("wearer_lock_id", lockId);
+    // Prevent the legacy lock_id migration from restoring a cleared selection after reboot.
+    prefs.remove("lock_id");
   }
   prefs.end();
   refreshLock(); if (lastError.length()) { sendError(502, lastError); return; }
