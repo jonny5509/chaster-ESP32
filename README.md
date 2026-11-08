@@ -31,6 +31,8 @@ An ESP32-hosted dashboard for managing Chaster locks through the **Chaster Publi
    ```
 
 4. Flash the matching environment using PlatformIO.
+**Preserving saved data when updating:** Use PlatformIO's normal **Upload** action (`pio run -e <environment> -t upload`) to flash a firmware update. The firmware image is written to the application partition; normal upload does not intentionally erase the NVS partition where Wi-Fi credentials, both Chaster tokens, dashboard password, role/handover state and selected lock ID are stored. Do **not** use `pio run -t erase`, `esptool erase-flash`, an IDE option such as **Erase All Flash**, or a full-chip erase: those erase NVS and permanently remove the saved configuration. Avoid changing the partition layout between firmware versions unless a migration plan is provided. Back up the credentials/configuration securely before any maintenance; there is currently no export/restore tool. A normal upload is not a guarantee against data loss if the flash chip/partition layout is changed or the device is factory-erased.
+
 5. Connect to the setup network `Chaster-ESP32` (default password: `chaster32`) and open `http://192.168.4.1`.
 6. First setup: enter the wearer's Wi-Fi, Chaster API token and a strong local dashboard password (at least 10 characters).
 7. Open the device's LAN address and sign in as `admin` using the dashboard password. Existing installations without a dashboard password will be prompted to set one before lock details are shown.
