@@ -29,7 +29,13 @@ String htmlEscape(String s) {
   s.replace(">", "&gt;"); s.replace("\"", "&quot;");
   s.replace("'", "&#39;"); return s;
 }
-String activeToken() { return role == "keyholder" ? holderToken : wearerToken; }
+// Never fall back to the wearer's token once handover has started.
+String activeToken() {
+  if (handoverPending) return "";
+  if (role == "keyholder") return holderToken;
+  if (role == "wearer") return wearerToken;
+  return "";
+}
 bool requireAuth() {
   if (dashboardPassword.length()) {
     if (server.authenticate("admin", dashboardPassword.c_str())) return true;
@@ -257,11 +263,11 @@ void handleConfig() {
     sendError(409, "Credentials and role are locked. Use the credential reset flow before setting up again."); return;
   }
   prefs.begin("chaster", false);
-  if (handoverPending) {
+  if (handoverPending && role == "keyholder") {
     // The keyholder chooses the canonical lock ID for both wearer and keyholder views.
     prefs.putString("holder_token", token); prefs.putString("holder_lock_id", newLockId); prefs.putString("wearer_lock_id", newLockId); prefs.putString("ssid", ssid);
     if (!dashboardPassword.length()) prefs.putString("dash_pw", newDashPassword);
-    if (pass.length()) prefs.putString("wifi_pw", pass);
+    if (pass.length()) prefs.putString("wifi_pw", pass); else prefs.remove("wifi_pw");
     prefs.putString("role", "keyholder"); prefs.putBool("handover", false);
   } else {
     prefs.putString("wearer_token", token); prefs.putString("wearer_lock_id", newLockId); prefs.putString("ssid", ssid); prefs.putString("dash_pw", newDashPassword);
@@ -269,6 +275,13 @@ void handleConfig() {
     prefs.putString("role", "wearer");
   }
   prefs.end();
+  // Update the live state too; after this point no request may use wearer credentials.
+  if (handoverPending && role == "keyholder") {
+    holderToken = token; role = "keyholder"; handoverPending = false;
+    wifiSsid = ssid; wifiPassword = pass; lockId = newLockId; lastJson = "{}"; lastError = "";
+  } else {
+    wearerToken = token; role = "wearer"; wifiSsid = ssid; wifiPassword = pass; lockId = newLockId;
+  }
   server.send(200, "application/json", "{\"ok\":true}");
   delay(500); ESP.restart();
 }
@@ -279,6 +292,10 @@ void handleHandover() {
   prefs.putString("role", "keyholder"); prefs.remove("ssid"); prefs.remove("wifi_pw");
   prefs.remove("holder_token"); prefs.remove("holder_lock_id"); prefs.putBool("handover", true);
   prefs.end();
+  // Switch the running firmware to keyholder setup immediately and fail closed.
+  role = "keyholder"; handoverPending = true; holderToken = "";
+  wifiSsid = ""; wifiPassword = ""; lockId = ""; lastJson = "{}";
+  lastError = "Keyholder setup is pending. Enter the keyholder Wi-Fi and Chaster token.";
   sendJson(200, "{\"ok\":true,\"handoverPending\":true}");
   delay(500); ESP.restart();
 }
@@ -343,6 +360,8 @@ void loadConfig() {
   // Migrate installations made by the earlier single-token firmware.
   if (!wearerToken.length()) wearerToken = prefs.getString("token", "");
   role = prefs.getString("role", "wearer"); handoverPending = prefs.getBool("handover", false);
+  if (role != "wearer" && role != "keyholder") role = "wearer";
+  if (handoverPending) role = "keyholder";
   lockId = role == "keyholder" ? prefs.getString("holder_lock_id", "") : prefs.getString("wearer_lock_id", "");
   // Migrate the legacy shared lock ID only for the original wearer setup.
   if (role == "wearer" && !lockId.length()) lockId = prefs.getString("lock_id", "");
