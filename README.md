@@ -1,79 +1,71 @@
 # Chaster ESP32
 
-An ESP32-hosted, mobile-friendly dashboard for viewing and managing Chaster locks. This is a Chaster-native port; it does not call the old EmlaLock API.
+An ESP32-hosted dashboard for managing Chaster locks through the **Chaster Public API**. The setup and handover experience is modelled on the EmlaLock ESP32 project, but the firmware does not call EmlaLock's API.
 
-## Included
+## Features
 
-- Wi-Fi setup access point: `Chaster-ESP32` (default password: `chaster32`); it is enabled only when the saved Wi-Fi connection cannot be established
-- Stores Wi-Fi details, Chaster token, optional lock ID, account mode and dashboard password in ESP32 NVS
-- Chaster Public API Bearer-token authentication
-- Wearer lock list and keyholder lock-search mode
-- Lock selection, return-to-list control and lock detail display
-- Elapsed and remaining time display from lock start/end timestamps
-- Freeze and unfreeze controls
-- Add/remove time controls using `POST /locks/{lockId}/update-time` with signed `duration` seconds
-- Recent history request
-- 30-second data refresh, with failed API attempts throttled to avoid rapid retry loops
-- HTTP Basic Authentication for dashboard routes
-- Clear-credentials action
-- PlatformIO environments for ESP32, ESP32-C3, ESP32-S2 and ESP32-S3
-- GitHub Actions build matrix
+- Wearer-first setup with Wi-Fi and a Chaster Public API token.
+- **Hand Over** action: retains the wearer token privately in ESP32 NVS, clears the saved Wi-Fi and any previous keyholder token, and restarts the setup access point.
+- Keyholder setup: the keyholder connects to the setup AP and enters their own Wi-Fi details and Chaster API token. The wearer token is not displayed or requested again.
+- Role-locked keyholder dashboard after handover.
+- Chaster Public API Bearer-token integration, using the wearer token before handover and the keyholder token after handover.
+- Wearer lock list and keyholder lock search, lock selection and lock details.
+- Freeze/unfreeze, add/remove time, recent lock history, and elapsed/remaining timers.
+- 30-second refresh interval with request throttling.
+- HTTP Basic Authentication for dashboard routes.
+- Credential reset.
+- PlatformIO build targets for ESP32, ESP32-C3, ESP32-S2 and ESP32-S3.
 
 ## Build and flash
 
 1. Install Visual Studio Code and PlatformIO.
 2. Open this repository.
-3. Build for your board, e.g.:
+3. Build for your board:
 
    ```sh
    pio run -e esp32dev
-   pio run -e esp32dev -t upload
+   pio run -e esp32c3
+   pio run -e esp32s2
+   pio run -e esp32s3
    ```
 
-   Other environments: `esp32c3`, `esp32s2`, `esp32s3`.
+4. Flash the matching environment using PlatformIO.
+5. Connect to the setup network `Chaster-ESP32` (default password: `chaster32`) and open `http://192.168.4.1`.
+6. First setup: enter the wearer's Wi-Fi, Chaster API token and a strong local dashboard password (at least 10 characters).
+7. Open the device's LAN address and sign in as `admin`.
+8. When ready, press **Hand Over to Keyholder**. The device restarts its setup AP.
+9. The keyholder connects to `Chaster-ESP32` and enters their own Wi-Fi and Chaster API token. The wearer token remains stored privately and is not shown to the keyholder.
 
-4. Connect to Wi-Fi `Chaster-ESP32` (default password `chaster32`).
-5. Open `http://192.168.4.1`.
-6. Enter your Wi-Fi SSID, Chaster developer/access token, optional lock ID, account view and a dashboard password of at least 10 characters.
-7. After restart, open the ESP32's LAN IP address. Sign in as username `admin` with the dashboard password.
+The keyholder role is locked after handover. Use the device's credential reset flow before reconfiguring it from scratch.
 
-Leave Lock ID blank to show an account lock list. For keyholder mode, use a token belonging to the keyholder account.
+## Chaster API permissions
 
-## Chaster scopes and permissions
+Use Chaster developer/access tokens with the required scopes for the account and actions being performed. Chaster also checks the lock's own permissions; a valid token does not guarantee every action will be accepted.
 
-The Chaster Public API requires a developer or access token. The relevant scopes include:
+The firmware uses these Chaster-native routes:
 
-- `locks:read` for wearer lock reads
-- `locks:write` for wearer lock actions
-- `keyholder:read` for keyholder lock search
-- `keyholder:write` for keyholder actions
+- `GET /locks` and `GET /locks/{lockId}` for wearer lock list/details.
+- `POST /keyholder/locks/search` for keyholder lock search.
+- `POST /locks/{lockId}/freeze` for freeze/unfreeze.
+- `POST /locks/{lockId}/update-time` with signed `duration` seconds for adding/removing time.
+- `POST /locks/{lockId}/history` for recent history.
 
-Legacy aggregate scopes may continue to work. Chaster also checks the permissions granted on each individual lock. The API can reject an action even when the token itself is valid.
-
-### Add/remove time payload
-
-The firmware sends a signed duration in seconds:
+Time payload examples:
 
 - Add one hour: `{"duration":3600}`
 - Remove 30 minutes: `{"duration":-1800}`
 
-This follows the request format supplied for this integration. Note that the currently published Swagger page lists `UpdateTimeDto` without showing its properties, so the exact request body is not independently confirmed by the visible OpenAPI schema. The UI reports Chaster's API response; test on a non-critical lock first and check Chaster's lock history before relying on it.
+The API request formats and scopes should be checked against the current Chaster documentation and tested on a non-critical lock before relying on them. In particular, verify that the selected lock permits the requested action.
 
 ## Security limitations — read before use
 
-- Change the default setup access-point password in `src/main.cpp` before deployment.
-- Set a unique, strong dashboard password. The dashboard uses HTTP Basic Authentication, but local dashboard traffic is plain HTTP. Use only on a trusted private network.
-- The Chaster token is stored in ESP32 NVS. Do not commit it to GitHub or share it. Use the reset action before handing the board to someone else.
-- **TLS certificate validation is not enabled yet.** The firmware currently calls `WiFiClientSecure::setInsecure()`. This means the ESP32 does not verify Chaster's HTTPS certificate and is vulnerable to interception. Do not use this as a secure credential appliance or on untrusted networks until certificate validation is implemented.
-- No OTA firmware updater is included.
+- Change the default setup AP password in `src/main.cpp` before deployment.
+- Set a unique dashboard password. The dashboard uses HTTP Basic Authentication, but local dashboard traffic is plain HTTP; use only on a trusted private network.
+- Tokens are stored in ESP32 NVS. The wearer token is retained during handover, so physically protect the device and use credential reset before disposal or transfer to a different owner.
+- **TLS certificate validation is not enabled yet.** The firmware currently uses `WiFiClientSecure::setInsecure()`, so it does not verify Chaster's HTTPS certificate and is vulnerable to interception. Do not treat this as a secure credential appliance until certificate validation is implemented.
+- The firmware has no OTA updater.
 - This project is not a safety, emergency-unlock or certified lock-control device. Keep access to Chaster's official controls.
 
 ## Verification status
 
-The dashboard JavaScript has been syntax-checked. The firmware has not yet been compiled with PlatformIO or tested on physical ESP32 hardware. A recent commit was not associated with a GitHub Actions run or status result when checked, so no successful build is claimed. Verify the workflow result, board target, API scopes, API request bodies and lock permissions before relying on it.
-
-## References
-
-- [Chaster Public API getting started](https://docs.chaster.app/api/basics/getting-started/)
-- [Chaster Public API endpoints and OpenAPI/Swagger](https://docs.chaster.app/api/public-api/endpoints/)
-- [Chaster OAuth scopes changelog](https://docs.chaster.app/api/changelog/)
+The code has been updated on a feature branch. It has not yet been compiled with PlatformIO or tested on physical ESP32 hardware in this environment. Confirm all four PlatformIO targets, Chaster endpoint payloads/scopes, lock permissions, and the handover sequence before relying on the firmware.
