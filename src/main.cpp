@@ -67,7 +67,8 @@ bool apiRequest(const String &method, const String &path, const String &body, St
     lastError = "Chaster API HTTP " + String(code) + ": " + response;
     if (code == 401) lastError = "Chaster rejected the " + role + " API token (401). Generate a fresh Chaster Public API developer token while signed into the account that owns this role, then re-enter it in setup. Check that the token is not expired or revoked. Response: " + response;
     else if (code == 403) {
-      String scope = role == "keyholder" ? (method == "GET" ? "keyholder:read" : "keyholder:write") : (method == "GET" ? "locks:read" : "locks:write");
+      bool readOnly = method == "GET" || path.endsWith("/history") || path == "/keyholder/locks/search";
+      String scope = role == "keyholder" ? (readOnly ? "keyholder:read" : "keyholder:write") : (readOnly ? "locks:read" : "locks:write");
       lastError = "Chaster denied this request (403). Check the active account token has the " + scope + " scope and that this lock permits the requested action for this role. Response: " + response;
     }
     else if (code == 404) lastError = "Chaster could not find this lock or endpoint (404). Check the selected lock ID and confirm it is accessible to the active Chaster account. Response: " + response;
