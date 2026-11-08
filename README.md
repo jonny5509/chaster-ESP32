@@ -32,8 +32,8 @@ An ESP32-hosted dashboard for managing Chaster locks through the **Chaster Publi
 4. Flash the matching environment using PlatformIO.
 5. Connect to the setup network `Chaster-ESP32` (default password: `chaster32`) and open `http://192.168.4.1`.
 6. First setup: enter the wearer's Wi-Fi, Chaster API token and a strong local dashboard password (at least 10 characters).
-7. Open the device's LAN address and sign in as `admin`.
-8. When ready, press **Hand Over to Keyholder**. The device restarts its setup AP.
+7. Open the device's LAN address and sign in as `admin` using the dashboard password. Existing installations without a dashboard password will be prompted to set one before lock details are shown.
+8. When ready, press **Hand Over to Keyholder**. The device restarts its setup AP. The existing dashboard password is retained; share it with the keyholder so they can authenticate to the setup page and dashboard.
 9. The keyholder connects to `Chaster-ESP32` and enters their own Wi-Fi and Chaster API token. The wearer token remains stored privately and is not shown to the keyholder.
 
 The keyholder role is locked after handover. Use the device's credential reset flow before reconfiguring it from scratch.
@@ -60,7 +60,7 @@ The API request formats and scopes should be checked against the current Chaster
 ## Security limitations — read before use
 
 - Change the default setup AP password in `src/main.cpp` before deployment.
-- Set a unique dashboard password. The dashboard uses HTTP Basic Authentication, but local dashboard traffic is plain HTTP; use only on a trusted private network.
+- Set a unique dashboard password. Dashboard pages and API routes use HTTP Basic Authentication with username `admin`. Local dashboard traffic is plain HTTP; use only on a trusted private network. The password is retained across handover. If it is lost, use the physical device reset procedure to clear all credentials.
 - Tokens are stored in ESP32 NVS. The wearer token is retained during handover, so physically protect the device and use credential reset before disposal or transfer to a different owner.
 - **TLS certificate validation is not enabled yet.** The firmware currently uses `WiFiClientSecure::setInsecure()`, so it does not verify Chaster's HTTPS certificate and is vulnerable to interception. Do not treat this as a secure credential appliance until certificate validation is implemented.
 - The firmware has no OTA updater.
