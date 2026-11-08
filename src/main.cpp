@@ -248,7 +248,7 @@ void handleUpdateToken() {
   if (token.startsWith("Bearer ")) { token.remove(0, 7); token.trim(); }
   if (!token.length()) { sendError(400, "A Chaster developer token is required."); return; }
   prefs.begin("chaster", false); prefs.putString("holder_token", token); prefs.end();
-  sendJson(200, "{\\"ok\\":true}"); delay(500); ESP.restart();
+  sendJson(200, "{\"ok\":true}"); delay(500); ESP.restart();
 }
 void handleReset() {
   prefs.begin("chaster", false); prefs.clear(); prefs.end();
