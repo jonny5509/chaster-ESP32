@@ -166,8 +166,10 @@ void handleUpdateTime() {
   JsonDocument body; body["duration"] = duration; String payload; serializeJson(body, payload); String response;
   if (!apiRequest("POST", "/locks/" + lockId + "/update-time", payload, response)) { sendError(502, lastError); return; }
   refreshLock(); JsonDocument out; out["ok"] = true;
-  out["message"] = duration > 0 ? "Chaster accepted the add-time request." : "Chaster accepted the remove-time request.";
-  if (lastError.length()) out["message"] = String(out["message"].as<const char*>()) + " The lock could not be refreshed: " + lastError;
+  String message = duration > 0 ? "Chaster accepted the add-time request." : "Chaster accepted the remove-time request.";
+  if (lastError.length()) message += " The action was accepted, but the lock refresh failed: " + lastError;
+  else message += " Lock data refreshed.";
+  out["message"] = message;
   String result; serializeJson(out, result); sendJson(200, result);
 }
 void handleSelectLock() {
