@@ -189,6 +189,11 @@ void handleConfig() {
   JsonDocument d; if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
   String ssid = d["ssid"] | ""; String pass = d["wifiPassword"] | ""; String token = d["token"] | "";
   if (!ssid.length() || !token.length()) { sendError(400, "Wi-Fi SSID and Chaster token are required."); return; }
+  // Once wearer or keyholder credentials are provisioned, role and API credentials stay locked.
+  // Only the explicit handover-pending state may accept the keyholder token.
+  if (!handoverPending && (wearerToken.length() || holderToken.length())) {
+    sendError(409, "Credentials and role are locked. Use the credential reset flow before setting up again."); return;
+  }
   prefs.begin("chaster", false);
   if (handoverPending) {
     prefs.putString("holder_token", token); prefs.putString("ssid", ssid);
