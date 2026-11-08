@@ -14,7 +14,7 @@ An ESP32-hosted dashboard for managing Chaster locks through the **Chaster Publi
 - 30-second refresh interval with request throttling.
 - HTTP Basic Authentication for dashboard routes.
 - Authenticated Wi-Fi settings and recovery if the configured network changes or drops.
-- Credential reset.
+- Wearer-mode credential reset (hidden in keyholder mode to avoid erasing the retained wearer token).
 - PlatformIO build targets for ESP32, ESP32-C3, ESP32-S2 and ESP32-S3.
 
 ## Build and flash
@@ -61,7 +61,7 @@ The API request formats and scopes should be checked against the current Chaster
 ## Security limitations — read before use
 
 - Change the default setup AP password in `src/main.cpp` before deployment.
-- Set a unique dashboard password. Dashboard pages and API routes use HTTP Basic Authentication with username `admin`. Local dashboard traffic is plain HTTP; use only on a trusted private network. The password is retained across handover. If it is lost, use the physical device reset procedure to clear all credentials.
+- Set a unique dashboard password. Dashboard pages and API routes use HTTP Basic Authentication with username `admin`. Local dashboard traffic is plain HTTP; use only on a trusted private network. The password is retained across handover. There is no in-firmware password recovery; if it is lost, an NVS erase/reflash may be required. Keep a secure copy.
 - Tokens are stored in ESP32 NVS. The wearer token is retained during handover, so physically protect the device and use credential reset before disposal or transfer to a different owner.
 - **TLS certificate validation is not enabled yet.** The firmware currently uses `WiFiClientSecure::setInsecure()`, so it does not verify Chaster's HTTPS certificate and is vulnerable to interception. Do not treat this as a secure credential appliance until certificate validation is implemented.
 - The firmware has no OTA updater.
