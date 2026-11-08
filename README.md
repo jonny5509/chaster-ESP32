@@ -13,6 +13,7 @@ An ESP32-hosted dashboard for managing Chaster locks through the **Chaster Publi
 - Freeze/unfreeze, add/remove time, recent lock history, and elapsed/remaining timers.
 - 30-second refresh interval with request throttling.
 - HTTP Basic Authentication for dashboard routes.
+- Authenticated Wi-Fi settings and recovery if the configured network changes or drops.
 - Credential reset.
 - PlatformIO build targets for ESP32, ESP32-C3, ESP32-S2 and ESP32-S3.
 
