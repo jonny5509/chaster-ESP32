@@ -31,8 +31,19 @@ String htmlEscape(String s) {
 }
 String activeToken() { return role == "keyholder" ? holderToken : wearerToken; }
 bool requireAuth() {
-  if (!dashboardPassword.length() || server.authenticate("admin", dashboardPassword.c_str())) return true;
-  server.requestAuthentication(); return false;
+  if (dashboardPassword.length()) {
+    if (server.authenticate("admin", dashboardPassword.c_str())) return true;
+    server.requestAuthentication(); return false;
+  }
+  // Legacy devices without a dashboard password may only view setup/state and set one.
+  // Block every control/configuration endpoint until the password is provisioned.
+  String uri = server.uri();
+  bool provisioned = wearerToken.length() || holderToken.length();
+  bool allowedWithoutPassword = !provisioned || uri == "/" || uri == "/api/state" ||
+                                uri == "/api/set-password" || (handoverPending && uri == "/api/config");
+  if (allowedWithoutPassword) return true;
+  server.send(423, "application/json", "{\\"ok\\":false,\\"error\\":\\"Set a dashboard password before using device controls.\\"}");
+  return false;
 }
 
 void sendJson(int code, const String &body) {
