@@ -81,7 +81,10 @@ bool apiRequest(const String &method, const String &path, const String &body, St
 }
 
 void refreshLock() {
-  // Throttle failed as well as successful requests; otherwise a persistent API\n  // error would trigger a request on every loop iteration.\n  lastRefresh = millis();\n  String response;
+  // Throttle failed as well as successful requests; otherwise a persistent API
+  // error would trigger a request on every loop iteration.
+  lastRefresh = millis();
+  String response;
   String path = lockId.length() == 0 ? "/locks" : "/locks/" + lockId;
   bool ok;
   if (lockId.length() == 0 && viewMode == "keyholder") {
@@ -290,11 +293,17 @@ void handleReset() {
   delay(500); ESP.restart();
 }
 
-void startSetupAP() {\n  // Only expose the provisioning AP when station Wi-Fi is unavailable.\n  WiFi.mode(WIFI_AP);\n  WiFi.softAP(AP_NAME, AP_PASSWORD);\n}
+void startSetupAP() {
+  // Only expose the provisioning AP when station Wi-Fi is unavailable.
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(AP_NAME, AP_PASSWORD);
+}
 
 void connectWiFi() {
   if (wifiSsid.length() == 0) return;
-  // Keep the known-password setup AP offline during normal connected use.\n  WiFi.mode(WIFI_STA);\n  WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+  // Keep the known-password setup AP offline during normal connected use.
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
   uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started < 15000) delay(250);
   stationConnected = WiFi.status() == WL_CONNECTED;
