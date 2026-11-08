@@ -43,6 +43,9 @@ void sendError(int code, const String &message) {
 bool apiRequest(const String &method, const String &path, const String &body, String &response) {
   if (WiFi.status() != WL_CONNECTED) { lastError = "Wi-Fi is not connected."; return false; }
   String token = activeToken();
+  token.trim();
+  // Accept either the raw developer token or a copied "Bearer <token>" value.
+  if (token.startsWith("Bearer ")) { token.remove(0, 7); token.trim(); }
   if (!token.length()) { lastError = "No Chaster API token configured for this role."; return false; }
   WiFiClientSecure client;
   // TODO: replace setInsecure() with Chaster's validated CA chain before production use.
@@ -58,7 +61,7 @@ bool apiRequest(const String &method, const String &path, const String &body, St
   response = http.getString(); http.end();
   if (code < 200 || code >= 300) {
     lastError = "Chaster API HTTP " + String(code) + ": " + response;
-    if (code == 401) lastError = "Chaster rejected the keyholder token (401). Check that it is valid and belongs to the keyholder account. Response: " + response;
+    if (code == 401) lastError = "Chaster rejected the " + role + " API token (401). Generate a fresh Chaster Public API developer token while signed into the account that owns this role, then re-enter it in setup. Check that the token is not expired or revoked. Response: " + response;
     else if (code == 403) lastError = "Chaster denied this action (403). Check the token has keyholder:write (and keyholder:read for lock refresh), and that this lock's permissions allow the keyholder to perform this specific action. Response: " + response;
     else if (code == 404) lastError = "Chaster could not find this lock or endpoint (404). Check the selected lock belongs to this keyholder. Response: " + response;
     return false;
@@ -204,6 +207,9 @@ void handleHistory() {
 void handleConfig() {
   JsonDocument d; if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
   String ssid = d["ssid"] | ""; String pass = d["wifiPassword"] | ""; String token = d["token"] | ""; String newLockId = d["lockId"] | "";
+  token.trim();
+  // Avoid accidentally storing a pasted Authorization header as the token itself.
+  if (token.startsWith("Bearer ")) { token.remove(0, 7); token.trim(); }
   if (!ssid.length() || !token.length() || !newLockId.length()) { sendError(400, "Wi-Fi SSID, Chaster developer token and lock ID are required."); return; }
   // Once wearer or keyholder credentials are provisioned, role and API credentials stay locked.
   // Only the explicit handover-pending state may accept the keyholder token.
