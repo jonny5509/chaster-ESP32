@@ -155,7 +155,13 @@ void handleFreeze() {
   JsonDocument body; body["isFrozen"] = input["isFrozen"].as<bool>();
   String payload; serializeJson(body, payload); String response;
   if (!apiRequest("POST", "/locks/" + lockId + "/freeze", payload, response)) { sendError(502, lastError); return; }
-  refreshLock(); sendJson(200, "{\"ok\":true,\"message\":\"Chaster accepted the freeze-state request.\"}");
+  refreshLock();
+  JsonDocument out; out["ok"] = true;
+  String message = input["isFrozen"].as<bool>() ? "Chaster accepted the freeze request." : "Chaster accepted the unfreeze request.";
+  if (lastError.length()) message += " The action was accepted, but the lock refresh failed: " + lastError;
+  else message += " Lock data refreshed.";
+  out["message"] = message;
+  String result; serializeJson(out, result); sendJson(200, result);
 }
 void handleUpdateTime() {
   if (!lockId.length()) { sendError(400, "Select a specific lock first."); return; }
