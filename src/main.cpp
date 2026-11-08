@@ -120,7 +120,7 @@ async function showLockList(){try{await call('/api/select-lock',{method:'POST',h
 async function freeze(value){if(!confirm((value?'Freeze':'Unfreeze')+' this lock?'))return;try{const x=await call('/api/freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({isFrozen:value})});msg('actionMsg',x.message||'Chaster accepted the request.');await refresh()}catch(e){msg('actionMsg',e.message)}}
 async function changeTime(add){let h=Number($('hours').value),m=Number($('minutes').value);if(!Number.isInteger(h)||!Number.isInteger(m)||h<0||m<0||m>59||(!h&&!m)){msg('actionMsg','Enter a positive duration.');return}let sec=(h*3600+m*60)*(add?1:-1);if(!confirm((add?'Add ':'Remove ')+h+'h '+m+'m?'))return;try{const x=await call('/api/update-time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:sec})});msg('actionMsg',x.message||'Chaster accepted the request.');await refresh()}catch(e){msg('actionMsg',e.message)}}
 async function loadHistory(){try{let x=await call('/api/history',{method:'POST'});msg('history',JSON.stringify(x.data,null,2))}catch(e){msg('history',e.message)}}
-async function handover(){if(!confirm('Hand over this device? The wearer token will remain stored privately. Wi-Fi and any keyholder token will be cleared.'))return;try{await call('/api/handover',{method:'POST'});msg('status','Handover started. Connect to the Chaster-ESP32 setup network.');setTimeout(loadState,1000)}catch(e){msg('actionMsg',e.message)}}
+async function handover(){if(!confirm('Hand over this device? The wearer developer token and lock ID will remain stored privately. Wi-Fi and any keyholder credentials will be cleared.'))return;try{await call('/api/handover',{method:'POST'});msg('status','Handover started. Connect to the Chaster-ESP32 setup network.');setTimeout(loadState,1000)}catch(e){msg('actionMsg',e.message)}}
 async function resetDevice(){if(!confirm('Erase all Chaster credentials and Wi-Fi settings?'))return;try{await call('/api/reset',{method:'POST'});msg('status','Credentials cleared. Restarting…')}catch(e){msg('status',e.message)}}
 $('config').addEventListener('submit',async e=>{e.preventDefault();let f=new FormData(e.target),p={ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword'),token:f.get('token'),lockId:f.get('lockId')};try{await call('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});msg('status','Saved. Restarting…')}catch(err){msg('status',err.message)}});
 loadState();setInterval(()=>{if(!$('dashboard').classList.contains('hidden'))loadState()},30000);setInterval(timer,1000);
@@ -249,7 +249,8 @@ void loadConfig() {
   if (!wearerToken.length()) wearerToken = prefs.getString("token", "");
   role = prefs.getString("role", "wearer"); handoverPending = prefs.getBool("handover", false);
   lockId = role == "keyholder" ? prefs.getString("holder_lock_id", "") : prefs.getString("wearer_lock_id", "");
-  if (!lockId.length()) lockId = prefs.getString("lock_id", "");
+  // Migrate the legacy shared lock ID only for the original wearer setup.
+  if (role == "wearer" && !lockId.length()) lockId = prefs.getString("lock_id", "");
   prefs.end();
 }
 } // namespace
