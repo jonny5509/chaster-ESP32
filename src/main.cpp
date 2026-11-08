@@ -89,20 +89,20 @@ button{background:var(--accent);border:0;font-weight:700;cursor:pointer}button.s
 .hidden{display:none!important}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;background:#0d192b;padding:12px;border-radius:10px}
 @media(max-width:560px){body{padding:12px}.grid{grid-template-columns:1fr}.card{padding:16px}}
 </style></head><body><main><h1>Chaster ESP32</h1><div id="status" class="status">Connecting…</div>
-<section id="setup" class="card hidden"><h2 id="setupTitle">Device setup</h2><div id="handoverInfo" class="notice hidden">Handover is ready. The wearer's developer token and lock ID remain stored privately. Enter your own Wi-Fi, developer token and lock ID below.</div>
+<section id="setup" class="card hidden"><h2 id="setupTitle">Device setup</h2><div id="handoverInfo" class="notice hidden">Handover is ready. The wearer's developer token remains stored privately. Enter your Wi-Fi, developer token and the lock ID to use for BOTH wearer and keyholder below. This replaces the wearer's saved lock ID.</div>
 <form id="config"><label>Wi-Fi network name</label><input name="ssid" required autocomplete="off">
 <label>Wi-Fi password</label><input name="wifiPassword" type="password" autocomplete="new-password">
 <label id="tokenLabel">Chaster developer token</label><input name="token" type="password" required autocomplete="new-password">
-<label>Chaster lock ID</label><input name="lockId" required autocomplete="off" placeholder="Enter the lock ID for this role">
+<label>Chaster lock ID</label><input name="lockId" required autocomplete="off" placeholder="Keyholder setup sets the shared lock ID for both roles">
 
-<button type="submit" id="saveBtn">Save and connect</button></form><p class="muted">The developer token and lock ID are stored in ESP32 NVS for this role and are never displayed again.</p></section>
+<button type="submit" id="saveBtn">Save and connect</button></form><p class="muted">Developer tokens are stored separately for each role. The keyholder's lock ID is shared by both roles and replaces the wearer's previous lock ID.</p></section>
 
 <section id="dashboard" class="hidden">
 <div class="card"><div class="muted" id="roleName">WEARER MODE</div><div class="muted">TIME ELAPSED</div><div class="time" id="elapsed">—</div><div class="muted">TIME REMAINING</div><div class="time" id="remaining">—</div><div id="lockSummary" class="status">No lock selected.</div></div>
 <div class="card"><h2>Lock selection</h2><select id="lockSelect"><option value="">All locks</option></select><div class="grid"><button class="secondary" onclick="chooseLock()">Open selected lock</button><button class="secondary" onclick="showLockList()">Back to lock list</button></div><button class="secondary" onclick="refresh()">Refresh now</button><pre id="lockData">Loading Chaster data…</pre></div>
 <div class="card"><h2>Lock controls</h2><div class="grid"><button onclick="freeze(true)">Freeze</button><button onclick="freeze(false)">Unfreeze</button></div><label>Hours</label><input id="hours" type="number" min="0" max="8760" value="1"><label>Minutes</label><input id="minutes" type="number" min="0" max="59" value="0"><div class="grid"><button onclick="changeTime(true)">Add time</button><button class="danger" onclick="changeTime(false)">Remove time</button></div><div id="actionMsg" class="notice">Actions are sent to Chaster using the token for the active role.</div></div>
 <div class="card"><h2>Lock history</h2><button class="secondary" onclick="loadHistory()">Load recent history</button><pre id="history">Choose a lock to view its history.</pre></div>
-<div id="handoverCard" class="card"><h2>Hand Over</h2><p class="muted">Preserve the wearer token privately, clear the current Wi-Fi and previous keyholder token, and restart the setup access point so the keyholder can enter their own Wi-Fi and Chaster token.</p><button class="danger" onclick="handover()">Hand Over to Keyholder</button></div>
+<div id="handoverCard" class="card"><h2>Hand Over</h2><p class="muted">Preserve the wearer token privately, clear the current Wi-Fi and previous keyholder token, and restart setup so the keyholder can enter their own Wi-Fi and Chaster token. The keyholder will set the shared lock ID used by both roles.</p><button class="danger" onclick="handover()">Hand Over to Keyholder</button></div>
 <div class="card"><h2>Device</h2><p class="muted">ESP32 dashboard settings and credential reset.</p><button class="danger" id="resetButton" onclick="resetDevice()">Clear all credentials</button></div>
 </section></main><script>
 const $=id=>document.getElementById(id);let role='wearer',lockStart=0,lockEnd=0;
@@ -182,7 +182,14 @@ void handleUpdateTime() {
 void handleSelectLock() {
   JsonDocument d; if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
   lockId = d["lockId"] | "";
-  prefs.begin("chaster", false); prefs.putString(role == "keyholder" ? "holder_lock_id" : "wearer_lock_id", lockId); prefs.end();
+  prefs.begin("chaster", false);
+  if (role == "keyholder") {
+    // A keyholder lock selection is shared with the wearer on the next handover/view.
+    prefs.putString("holder_lock_id", lockId); prefs.putString("wearer_lock_id", lockId);
+  } else {
+    prefs.putString("wearer_lock_id", lockId);
+  }
+  prefs.end();
   refreshLock(); if (lastError.length()) { sendError(502, lastError); return; }
   sendJson(200, "{\"ok\":true}");
 }
@@ -205,7 +212,8 @@ void handleConfig() {
   }
   prefs.begin("chaster", false);
   if (handoverPending) {
-    prefs.putString("holder_token", token); prefs.putString("holder_lock_id", newLockId); prefs.putString("ssid", ssid);
+    // The keyholder chooses the canonical lock ID for both wearer and keyholder views.
+    prefs.putString("holder_token", token); prefs.putString("holder_lock_id", newLockId); prefs.putString("wearer_lock_id", newLockId); prefs.putString("ssid", ssid);
     if (pass.length()) prefs.putString("wifi_pw", pass);
     prefs.putString("role", "keyholder"); prefs.putBool("handover", false);
   } else {
