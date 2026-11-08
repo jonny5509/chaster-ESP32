@@ -6,6 +6,7 @@ An ESP32-hosted, **keyholder-only** dashboard for managing Chaster locks through
 
 - Keyholder-first setup with Wi-Fi, a Chaster Public API developer token and a selected lock ID.
 - Keyholder lock search and selected-lock details.
+- Responsive dark control-centre dashboard with live elapsed/remaining timers, lock progress, status/frozen indicators, selected-lock metadata, history and raw API diagnostics.
 - Freeze/unfreeze, add/remove time, recent lock history, and elapsed/remaining timers.
 - All Chaster API requests use the configured keyholder token. The firmware never uses a wearer token.
 - 30-second refresh interval with request throttling.
