@@ -19,8 +19,8 @@ void startSetupAP();
 WebServer server(80);
 DNSServer dnsServer;
 Preferences prefs;
-String wifiSsid, wifiPassword, wearerToken, holderToken, lockId, dashboardPassword;
-String role = "wearer", lastJson = "{}", lastError;
+String wifiSsid, wifiPassword, holderToken, lockId, dashboardPassword;
+String role = "keyholder", lastJson = "{}", lastError;
 uint32_t lastRefresh = 0;
 bool handoverPending = false;
 
@@ -29,7 +29,7 @@ String htmlEscape(String s) {
   s.replace(">", "&gt;"); s.replace("\"", "&quot;");
   s.replace("'", "&#39;"); return s;
 }
-// Never fall back to the wearer's token once handover has started.
+// Only the keyholder account is ever used for Chaster API requests.
 String activeToken() { return handoverPending ? "" : holderToken; }
 bool requireAuth() {
   if (dashboardPassword.length()) {
@@ -62,7 +62,7 @@ bool apiRequest(const String &method, const String &path, const String &body, St
   token.trim();
   // Accept either the raw developer token or a copied "Bearer <token>" value.
   if (token.startsWith("Bearer ")) { token.remove(0, 7); token.trim(); }
-  if (!token.length()) { lastError = "No Chaster API token configured for this role."; return false; }
+  if (!token.length()) { lastError = "No keyholder Chaster API token configured."; return false; }
   WiFiClientSecure client;
   // TODO: replace setInsecure() with Chaster's validated CA chain before production use.
   client.setInsecure();
@@ -249,8 +249,7 @@ void handleConfig() {
   String newDashPassword = d["dashboardPassword"] | ""; newDashPassword.trim();
   if (!ssid.length() || !token.length() || !newLockId.length()) { sendError(400, "Wi-Fi SSID, Chaster developer token and lock ID are required."); return; }
   if (!dashboardPassword.length() && newDashPassword.length() < 10) { sendError(400, "Set a dashboard password of at least 10 characters."); return; }
-  // Once wearer or keyholder credentials are provisioned, role and API credentials stay locked.
-  // Only the explicit handover-pending state may accept the keyholder token.
+  // The device is configured only with the keyholder account.
   if (holderToken.length()) { sendError(409, "A keyholder token is already configured. Replace it from the dashboard."); return; }
   prefs.begin("chaster", false);
   prefs.putString("holder_token", token); prefs.putString("holder_lock_id", newLockId); prefs.putString("ssid", ssid);
@@ -262,20 +261,6 @@ void handleConfig() {
   holderToken = token; role = "keyholder"; handoverPending = false;
   wifiSsid = ssid; wifiPassword = pass; lockId = newLockId; lastJson = "{}"; lastError = "";
   server.send(200, "application/json", "{\"ok\":true}");
-  delay(500); ESP.restart();
-}
-void handleHandover() {
-  if (!requireAuth()) return;
-  if (role != "wearer" || !wearerToken.length() || handoverPending) { sendError(409, "Hand Over is available after wearer setup."); return; }
-  prefs.begin("chaster", false);
-  prefs.putString("role", "keyholder"); prefs.remove("ssid"); prefs.remove("wifi_pw");
-  prefs.remove("holder_token"); prefs.remove("holder_lock_id"); prefs.putBool("handover", true);
-  prefs.end();
-  // Switch the running firmware to keyholder setup immediately and fail closed.
-  role = "keyholder"; handoverPending = true; holderToken = "";
-  wifiSsid = ""; wifiPassword = ""; lockId = ""; lastJson = "{}";
-  lastError = "Keyholder setup is pending. Enter the keyholder Wi-Fi and Chaster token.";
-  sendJson(200, "{\"ok\":true,\"handoverPending\":true}");
   delay(500); ESP.restart();
 }
 void handleUpdateToken() {
