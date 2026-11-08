@@ -30,12 +30,7 @@ String htmlEscape(String s) {
   s.replace("'", "&#39;"); return s;
 }
 // Never fall back to the wearer's token once handover has started.
-String activeToken() {
-  if (handoverPending) return "";
-  if (role == "keyholder") return holderToken;
-  if (role == "wearer") return wearerToken;
-  return "";
-}
+String activeToken() { return handoverPending ? "" : holderToken; }
 bool requireAuth() {
   if (dashboardPassword.length()) {
     if (server.authenticate("admin", dashboardPassword.c_str())) return true;
@@ -44,7 +39,7 @@ bool requireAuth() {
   // Legacy devices without a dashboard password may only view setup/state and set one.
   // Block every control/configuration endpoint until the password is provisioned.
   String uri = server.uri();
-  bool provisioned = wearerToken.length() || holderToken.length();
+  bool provisioned = holderToken.length();
   bool allowedWithoutPassword = !provisioned || uri == "/" || uri == "/api/state" ||
                                 uri == "/api/set-password" || (handoverPending && uri == "/api/config");
   if (allowedWithoutPassword) return true;
@@ -98,8 +93,7 @@ void refreshLock() {
   String response;
   bool ok = false;
   if (lockId.length()) ok = apiRequest("GET", "/locks/" + lockId, "", response);
-  else if (role == "keyholder") ok = apiRequest("POST", "/keyholder/locks/search", R"({"limit":50,"page":0,"status":"locked"})", response);
-  else ok = apiRequest("GET", "/locks", "", response);
+  else ok = apiRequest("POST", "/keyholder/locks/search", R"({"limit":50,"page":0,"status":"locked"})", response);
   if (ok) { lastJson = response; lastRefresh = millis(); }
 }
 String dashboardPage() {
@@ -117,40 +111,39 @@ button{background:var(--accent);border:0;font-weight:700;cursor:pointer}button.s
 .hidden{display:none!important}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;background:#0d192b;padding:12px;border-radius:10px}
 @media(max-width:560px){body{padding:12px}.grid{grid-template-columns:1fr}.card{padding:16px}}
 </style></head><body><main><h1>Chaster ESP32</h1><div id="status" class="status">Connecting…</div>
-<section id="setup" class="card hidden"><h2 id="setupTitle">Device setup</h2><div id="handoverInfo" class="notice hidden">Handover is ready. The wearer's developer token remains stored privately. Enter your Wi-Fi, developer token and the lock ID to use for BOTH wearer and keyholder below. This replaces the wearer's saved lock ID.</div>
+<section id="setup" class="card hidden"><h2 id="setupTitle">Keyholder setup</h2><div id="handoverInfo" class="notice hidden">Enter the keyholder account's Wi-Fi details, Chaster developer token and lock ID.</div>
 <form id="config"><label>Wi-Fi network name</label><input name="ssid" required autocomplete="off">
 <label>Wi-Fi password</label><input name="wifiPassword" type="password" autocomplete="new-password">
-<label id="tokenLabel">Chaster developer token</label><input name="token" type="password" required autocomplete="new-password">
+<label id="tokenLabel">Keyholder Chaster developer token</label><input name="token" type="password" required autocomplete="new-password">
 <label>Chaster lock ID</label><input name="lockId" required autocomplete="off" placeholder="Keyholder setup sets the shared lock ID for both roles">
 <label>Dashboard password (minimum 10 characters)</label><input name="dashboardPassword" type="password" minlength="10" autocomplete="new-password">
 
-<button type="submit" id="saveBtn">Save and connect</button></form><p class="muted">Developer tokens are stored separately for each role. The keyholder's lock ID is shared by both roles and replaces the wearer's previous lock ID.</p></section>
+<button type="submit" id="saveBtn">Save and connect</button></form><p class="muted">Only the keyholder token is used for Chaster API requests.</p></section>
 
 <section id="dashboard" class="hidden">
-<div class="card"><div class="muted" id="roleName">WEARER MODE</div><div class="muted">TIME ELAPSED</div><div class="time" id="elapsed">—</div><div class="muted">TIME REMAINING</div><div class="time" id="remaining">—</div><div id="lockSummary" class="status">No lock selected.</div></div>
-<div class="card"><h2>Lock selection</h2><p class="muted">The selected lock ID is shared by wearer and keyholder. Changing it here updates both roles without changing either API token.</p><label>Selected Chaster lock ID</label><input id="lockIdInput" autocomplete="off" spellcheck="false" placeholder="Paste the Chaster lock ID"><button onclick="saveLockId()">Save lock ID for both roles</button><pre id="lockData">Loading Chaster data…</pre></div>
+<div class="card"><div class="muted" id="roleName">KEYHOLDER MODE</div><div class="muted">TIME ELAPSED</div><div class="time" id="elapsed">—</div><div class="muted">TIME REMAINING</div><div class="time" id="remaining">—</div><div id="lockSummary" class="status">No lock selected.</div></div>
+<div class="card"><h2>Lock selection</h2><p class="muted">Choose the Chaster lock ID this keyholder device should manage.</p><label>Selected Chaster lock ID</label><input id="lockIdInput" autocomplete="off" spellcheck="false" placeholder="Paste the Chaster lock ID"><button onclick="saveLockId()">Save lock ID for both roles</button><pre id="lockData">Loading Chaster data…</pre></div>
 <div class="card"><h2>Lock controls</h2><div class="grid"><button onclick="freeze(true)">Freeze</button><button onclick="freeze(false)">Unfreeze</button></div><label>Hours</label><input id="hours" type="number" min="0" max="8760" value="1"><label>Minutes</label><input id="minutes" type="number" min="0" max="59" value="0"><div class="grid"><button onclick="changeTime(true)">Add time</button><button class="danger" onclick="changeTime(false)">Remove time</button></div><div id="actionMsg" class="notice">Actions are sent to Chaster using the token for the active role.</div></div>
 <div class="card"><h2>Lock history</h2><button class="secondary" onclick="loadHistory()">Load recent history</button><pre id="history">Choose a lock to view its history.</pre></div>
-<div id="handoverCard" class="card"><h2>Hand Over</h2><p class="muted">Preserve the wearer token privately, clear the current Wi-Fi and previous keyholder token, and restart setup so the keyholder can enter their own Wi-Fi and Chaster token. The keyholder will set the shared lock ID used by both roles.</p><button class="danger" onclick="handover()">Hand Over to Keyholder</button></div>
+ 
 <div class="card"><h2>Wi-Fi connection</h2><p class="muted">Update the network if the router or password changes. The device will restart and reconnect.</p><form id="wifiForm"><label>Wi-Fi network name</label><input id="wifiSsid" name="ssid" required autocomplete="off"><label>Wi-Fi password</label><input name="wifiPassword" type="password" autocomplete="new-password" placeholder="Leave blank for an open network or to clear the saved password"><button type="submit">Save Wi-Fi settings</button></form></div>
 <div id="passwordSetup" class="card hidden"><h2>Secure dashboard</h2><p class="muted">Set a unique password of at least 10 characters to protect dashboard controls.</p><form id="passwordForm"><label>New dashboard password</label><input name="password" type="password" minlength="10" required autocomplete="new-password"><button type="submit">Save dashboard password</button></form></div>
 <div class="card"><h2>Device</h2><p class="muted">ESP32 dashboard settings and credential reset.</p><form id="tokenUpdate" class="hidden"><label>Replace keyholder Chaster developer token</label><input name="token" type="password" required autocomplete="new-password" placeholder="Paste a fresh keyholder token"><button type="submit">Save keyholder token</button></form><button class="danger" id="resetButton" onclick="resetDevice()">Clear all credentials</button></div>
 </section></main><script>
-const $=id=>document.getElementById(id);let role='wearer',lockStart=0,lockEnd=0,selectedLockId='';
+const $=id=>document.getElementById(id);let role='keyholder',lockStart=0,lockEnd=0,selectedLockId='';
 async function call(url,opts={}){const r=await fetch(url,opts);const t=await r.text();let d;try{d=JSON.parse(t)}catch(e){throw new Error(t||('HTTP '+r.status))}if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d}
 function msg(id,s){$(id).textContent=s}
 function dur(ms){if(!Number.isFinite(ms))return '—';let n=Math.max(0,Math.floor(ms/1000));let d=Math.floor(n/86400);n%=86400;let h=Math.floor(n/3600);n%=3600;return d+'d '+h+'h '+Math.floor(n/60)+'m '+(n%60)+'s'}
 function timer(){msg('elapsed',lockStart?dur(Date.now()-lockStart):'—');msg('remaining',lockEnd?dur(lockEnd-Date.now()):'—')}
 function lockArray(d){if(Array.isArray(d))return d;if(!d||typeof d!=='object')return null;for(const k of ['locks','items','results','data']){const v=d[k];if(Array.isArray(v))return v;if(v&&typeof v==='object'){const a=lockArray(v);if(a)return a}}return null}
 function renderData(d){$('lockData').textContent=JSON.stringify(d,null,2);if(!$('lockIdInput').matches(':focus'))$('lockIdInput').value=d&&typeof d==='object'?(d._id||d.id||d.lockId||$('lockIdInput').value):$('lockIdInput').value;const arr=lockArray(d);if(arr){lockStart=0;lockEnd=0;msg('lockSummary','Found '+arr.length+' lock(s). Enter a specific lock ID above to manage it.');}else if(d&&typeof d==='object'){const id=d._id||d.id||d.lockId||'';lockStart=Date.parse(d.startDate||d.startAt||d.startedAt||'')||0;lockEnd=Date.parse(d.endDate||d.endAt||d.endsAt||'')||0;msg('lockSummary',(d.title||id||'Selected lock')+' · '+(d.status||'status unknown')+' · Frozen: '+(d.isFrozen===true?'yes':d.isFrozen===false?'no':'unknown'));}timer()}
-async function loadState(){try{const x=await call('/api/state');role=x.role||'wearer';selectedLockId=x.lockId||'';if(!$('lockIdInput').matches(':focus'))$('lockIdInput').value=selectedLockId;if(!x.configured||x.handoverPending){$('setup').classList.remove('hidden');$('dashboard').classList.add('hidden');$('handoverInfo').classList.toggle('hidden',!x.handoverPending);$('setupTitle').textContent=x.handoverPending?'Keyholder setup':'Wearer setup';$('tokenLabel').textContent=x.handoverPending?'Keyholder Chaster developer token':'Wearer Chaster developer token';msg('status',x.handoverPending?'Handover setup · connect to Chaster-ESP32':'Setup access point active · connect to Chaster-ESP32');return}
-$('setup').classList.add('hidden');$('dashboard').classList.remove('hidden');$('roleName').textContent=role==='keyholder'?'KEYHOLDER MODE':'WEARER MODE';$('handoverCard').classList.toggle('hidden',role!=='wearer');$('resetButton').classList.toggle('hidden',role==='keyholder');$('tokenUpdate').classList.toggle('hidden',role!=='keyholder');$('passwordSetup').classList.toggle('hidden',!x.needsPassword);if(!$('wifiSsid').value)$('wifiSsid').value=x.wifiSsid||'';msg('status',x.apiError?((x.connected?'Wi-Fi connected · '+x.ip:'Wi-Fi disconnected')+' · Chaster: '+x.apiError):(x.connected?'Connected · '+x.ip:'Wi-Fi disconnected'));renderData(x.data||{});}catch(e){msg('status',e.message)}}
+async function loadState(){try{const x=await call('/api/state');role='keyholder';selectedLockId=x.lockId||'';if(!$('lockIdInput').matches(':focus'))$('lockIdInput').value=selectedLockId;if(!x.configured){$('setup').classList.remove('hidden');$('dashboard').classList.add('hidden');$('handoverInfo').classList.remove('hidden');msg('status','Keyholder setup · connect to Chaster-ESP32');return}
+$('setup').classList.add('hidden');$('dashboard').classList.remove('hidden');$('roleName').textContent='KEYHOLDER MODE';$('tokenUpdate').classList.remove('hidden');$('resetButton').classList.remove('hidden');$('passwordSetup').classList.toggle('hidden',!x.needsPassword);if(!$('wifiSsid').value)$('wifiSsid').value=x.wifiSsid||'';msg('status',x.apiError?((x.connected?'Wi-Fi connected · '+x.ip:'Wi-Fi disconnected')+' · Chaster: '+x.apiError):(x.connected?'Connected · '+x.ip:'Wi-Fi disconnected'));renderData(x.data||{});}catch(e){msg('status',e.message)}}
 async function refresh(){try{await call('/api/refresh',{method:'POST'});await loadState()}catch(e){msg('actionMsg',e.message)}}
 async function saveLockId(){const id=$('lockIdInput').value.trim();if(!id){msg('actionMsg','Enter a Chaster lock ID.');return}try{await call('/api/select-lock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lockId:id})});msg('actionMsg','Shared lock ID saved for wearer and keyholder.');await loadState()}catch(e){msg('actionMsg',e.message)}}
 async function freeze(value){if(!confirm((value?'Freeze':'Unfreeze')+' this lock?'))return;try{const x=await call('/api/freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({isFrozen:value})});msg('actionMsg',x.message||'Chaster accepted the request.');await refresh()}catch(e){msg('actionMsg',e.message)}}
 async function changeTime(add){let h=Number($('hours').value),m=Number($('minutes').value);if(!Number.isInteger(h)||!Number.isInteger(m)||h<0||m<0||m>59||(!h&&!m)){msg('actionMsg','Enter a positive duration.');return}let sec=(h*3600+m*60)*(add?1:-1);if(!confirm((add?'Add ':'Remove ')+h+'h '+m+'m?'))return;try{const x=await call('/api/update-time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:sec})});msg('actionMsg',x.message||'Chaster accepted the request.');await refresh()}catch(e){msg('actionMsg',e.message)}}
 async function loadHistory(){if(!selectedLockId){msg('history','Enter and save a Selected Chaster lock ID first.');return}msg('history','Loading history for selected lock '+selectedLockId+'…');try{let x=await call('/api/history',{method:'POST'});msg('history','Selected Chaster lock ID: '+selectedLockId+'\\n\\n'+JSON.stringify(x.data,null,2))}catch(e){msg('history','History for selected lock '+selectedLockId+' could not be loaded: '+e.message)}}
-async function handover(){if(!confirm('Hand over this device? The wearer developer token and lock ID will remain stored privately. Wi-Fi and any keyholder credentials will be cleared.'))return;try{await call('/api/handover',{method:'POST'});msg('status','Handover started. Connect to the Chaster-ESP32 setup network.');setTimeout(loadState,1000)}catch(e){msg('actionMsg',e.message)}}
 async function resetDevice(){if(!confirm('Erase all Chaster credentials and Wi-Fi settings?'))return;try{await call('/api/reset',{method:'POST'});msg('status','Credentials cleared. Restarting…')}catch(e){msg('status',e.message)}}
 $('config').addEventListener('submit',async e=>{e.preventDefault();let f=new FormData(e.target),p={ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword'),token:f.get('token'),lockId:f.get('lockId'),dashboardPassword:f.get('dashboardPassword')};try{await call('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});msg('status','Saved. Restarting…')}catch(err){msg('status',err.message)}});
 $('wifiForm').addEventListener('submit',async e=>{e.preventDefault();let f=new FormData(e.target);try{await call('/api/update-wifi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword')})});msg('status','Wi-Fi settings saved. Restarting…')}catch(err){msg('status',err.message)}});
@@ -171,10 +164,9 @@ void handleRoot() {
 void handleState() {
   if (!requireAuth()) return;
   JsonDocument d;
-  bool configured = role == "wearer" ? wearerToken.length() > 0 : holderToken.length() > 0;
-  configured = configured && wifiSsid.length() > 0 && !handoverPending;
-  d["ok"] = true; d["configured"] = configured; d["handoverPending"] = handoverPending;
-  d["role"] = role; d["connected"] = WiFi.status() == WL_CONNECTED;
+  bool configured = holderToken.length() > 0 && wifiSsid.length() > 0;
+  d["ok"] = true; d["configured"] = configured;
+  d["role"] = "keyholder"; d["connected"] = WiFi.status() == WL_CONNECTED;
   d["lockId"] = lockId; d["apiError"] = lastError; d["needsPassword"] = !dashboardPassword.length(); d["wifiSsid"] = wifiSsid;
   d["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   JsonDocument data; if (deserializeJson(data, lastJson)) data["raw"] = lastJson;
@@ -259,29 +251,16 @@ void handleConfig() {
   if (!dashboardPassword.length() && newDashPassword.length() < 10) { sendError(400, "Set a dashboard password of at least 10 characters."); return; }
   // Once wearer or keyholder credentials are provisioned, role and API credentials stay locked.
   // Only the explicit handover-pending state may accept the keyholder token.
-  if (!handoverPending && (wearerToken.length() || holderToken.length())) {
-    sendError(409, "Credentials and role are locked. Use the credential reset flow before setting up again."); return;
-  }
+  if (holderToken.length()) { sendError(409, "A keyholder token is already configured. Replace it from the dashboard."); return; }
   prefs.begin("chaster", false);
-  if (handoverPending && role == "keyholder") {
-    // The keyholder chooses the canonical lock ID for both wearer and keyholder views.
-    prefs.putString("holder_token", token); prefs.putString("holder_lock_id", newLockId); prefs.putString("wearer_lock_id", newLockId); prefs.putString("ssid", ssid);
-    if (!dashboardPassword.length()) prefs.putString("dash_pw", newDashPassword);
-    if (pass.length()) prefs.putString("wifi_pw", pass); else prefs.remove("wifi_pw");
-    prefs.putString("role", "keyholder"); prefs.putBool("handover", false);
-  } else {
-    prefs.putString("wearer_token", token); prefs.putString("wearer_lock_id", newLockId); prefs.putString("ssid", ssid); prefs.putString("dash_pw", newDashPassword);
-    if (pass.length()) prefs.putString("wifi_pw", pass);
-    prefs.putString("role", "wearer");
-  }
+  prefs.putString("holder_token", token); prefs.putString("holder_lock_id", newLockId); prefs.putString("ssid", ssid);
+  if (!dashboardPassword.length()) prefs.putString("dash_pw", newDashPassword);
+  if (pass.length()) prefs.putString("wifi_pw", pass); else prefs.remove("wifi_pw");
+  prefs.putString("role", "keyholder"); prefs.putBool("handover", false);
+  prefs.remove("wearer_token"); prefs.remove("token"); prefs.remove("wearer_lock_id"); prefs.remove("lock_id");
   prefs.end();
-  // Update the live state too; after this point no request may use wearer credentials.
-  if (handoverPending && role == "keyholder") {
-    holderToken = token; role = "keyholder"; handoverPending = false;
-    wifiSsid = ssid; wifiPassword = pass; lockId = newLockId; lastJson = "{}"; lastError = "";
-  } else {
-    wearerToken = token; role = "wearer"; wifiSsid = ssid; wifiPassword = pass; lockId = newLockId;
-  }
+  holderToken = token; role = "keyholder"; handoverPending = false;
+  wifiSsid = ssid; wifiPassword = pass; lockId = newLockId; lastJson = "{}"; lastError = "";
   server.send(200, "application/json", "{\"ok\":true}");
   delay(500); ESP.restart();
 }
@@ -311,7 +290,7 @@ void handleUpdateToken() {
 }
 void handleUpdateWiFi() {
   if (!requireAuth()) return;
-  if (!wearerToken.length() && !holderToken.length()) { sendError(409, "Complete Chaster setup before changing Wi-Fi."); return; }
+  if (!holderToken.length()) { sendError(409, "Complete keyholder setup before changing Wi-Fi."); return; }
   JsonDocument d; if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
   String ssid = d["ssid"] | ""; String pass = d["wifiPassword"] | ""; ssid.trim();
   if (!ssid.length()) { sendError(400, "Wi-Fi network name is required."); return; }
@@ -355,16 +334,11 @@ void connectWiFi() {
 void loadConfig() {
   prefs.begin("chaster", true);
   wifiSsid = prefs.getString("ssid", ""); wifiPassword = prefs.getString("wifi_pw", ""); dashboardPassword = prefs.getString("dash_pw", "");
-  wearerToken = prefs.getString("wearer_token", "");
   holderToken = prefs.getString("holder_token", "");
-  // Migrate installations made by the earlier single-token firmware.
-  if (!wearerToken.length()) wearerToken = prefs.getString("token", "");
-  role = prefs.getString("role", "wearer"); handoverPending = prefs.getBool("handover", false);
-  if (role != "wearer" && role != "keyholder") role = "wearer";
-  if (handoverPending) role = "keyholder";
-  lockId = role == "keyholder" ? prefs.getString("holder_lock_id", "") : prefs.getString("wearer_lock_id", "");
-  // Migrate the legacy shared lock ID only for the original wearer setup.
-  if (role == "wearer" && !lockId.length()) lockId = prefs.getString("lock_id", "");
+  role = "keyholder"; handoverPending = false;
+  lockId = prefs.getString("holder_lock_id", "");
+  // A previous wearer-only installation must be provisioned with a keyholder token.
+  if (!holderToken.length()) { handoverPending = true; wifiSsid = ""; wifiPassword = ""; }
   prefs.end();
 }
 } // namespace
@@ -384,7 +358,6 @@ void setup() {
   server.on("/api/set-password", HTTP_POST, handleSetPassword);
   server.on("/api/update-wifi", HTTP_POST, handleUpdateWiFi);
   server.on("/api/update-token", HTTP_POST, handleUpdateToken);
-  server.on("/api/handover", HTTP_POST, handleHandover);
   server.on("/api/reset", HTTP_POST, handleReset);
   server.onNotFound(captive);
   server.begin();
