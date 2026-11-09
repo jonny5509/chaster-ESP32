@@ -522,7 +522,7 @@ void handleReset() {
 void startSetupAP() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET);
-  if (WiFi.softAPgetStationNum() >= 0 && setupAP) return;
+  if (setupAP) return;
   // Retry AP startup rather than leaving the device silently unreachable if
   // the radio is not ready immediately after a reboot.
   for (uint8_t attempt = 0; attempt < 3 && !setupAP; ++attempt) {
