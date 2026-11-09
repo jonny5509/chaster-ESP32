@@ -9,7 +9,7 @@ An ESP32-hosted Chaster dashboard with a two-stage setup and explicit wearer-to-
 3. The device joins the Wi-Fi network and displays a read-only wearer dashboard. Freeze/unfreeze, time adjustment, lock selection and keyholder configuration are hidden and also rejected by the firmware.
 4. **Wearer handover:** on the wearer dashboard, press **Hand over to keyholder**. No keyholder token is needed at this stage. The device clears only the wearer Wi-Fi credentials and dashboard password, retains the wearer Chaster token and account ID, and restarts its setup access point.
 5. **Keyholder setup:** connect to `Chaster-ESP32` and open `http://192.168.4.1`. Enter the keyholder's Chaster developer token, their Wi-Fi network and password, and a new dashboard password.
-6. The device first connects to the supplied keyholder Wi-Fi, then retrieves the keyholder account ID from the supplied token and searches that authenticated keyholder account's active locks for the saved wearer account ID. It stores the keyholder token and ID only after the shared session is found, then starts the keyholder dashboard.
+6. The device first connects to the supplied keyholder Wi-Fi, validates the supplied token by retrieving the keyholder account ID, and saves the keyholder credentials separately from the wearer credentials. It then searches that authenticated keyholder account's active locks for the saved wearer account ID. If the matching lock is not available yet, it remains in pending setup and retries every 60 seconds; the dashboard becomes active when the shared session is found.
 
 The wearer token is never promoted to a keyholder token. The keyholder must supply a token belonging to their own Chaster account. The wearer account ID and wearer token remain stored throughout handover. The wearer Wi-Fi credentials and dashboard password are cleared when the wearer explicitly starts handover. The keyholder token is entered later on the keyholder setup page; the device connects to the keyholder's supplied Wi-Fi before validating that token and finding the matching session. The wearer ID is never replaced by the keyholder ID.
 
@@ -17,7 +17,7 @@ The wearer token is never promoted to a keyholder token. The keyholder must supp
 
 - Wearer-first Wi-Fi setup and automatic wearer account identification via `GET /auth/profile` (`profile` scope).
 - Wearer-initiated handover with no keyholder token required from the wearer; the keyholder enters their token on the keyholder setup page. The wearer token is retained separately.
-- Keyholder dashboard with live elapsed/remaining timers, lock progress, status/frozen indicators, selected-lock metadata, history and raw API diagnostics.
+- Keyholder dashboard with live elapsed/remaining timers, lock progress, status/frozen indicators, matched-lock metadata, history and raw API diagnostics.
 - Keyholder-only freeze/unfreeze and add/remove-time actions, enforced in both the UI and firmware API.
 - Automatic session matching requires both identities: the keyholder token is verified against the keyholder profile ID, and the keyholder's active locked-session search is matched against the saved wearer profile ID; no manual lock ID entry or selection. If the lock is not available yet, the device retries automatically every 60 seconds until it appears.
 - Preserve the wearer token and wearer ID after handover; clear wearer Wi-Fi and dashboard credentials and prompt the keyholder to enter their own network and dashboard password.
