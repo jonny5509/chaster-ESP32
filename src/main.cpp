@@ -441,6 +441,9 @@ void handleHandover() {
   prefs.end();
   holderToken = ""; role = "keyholder"; handoverPending = true;
   wifiSsid = ""; wifiPassword = ""; dashboardPassword = "";
+  // Start the handover AP immediately, then start it again during boot after
+  // restart. This avoids relying on stale station-mode state from wearer Wi-Fi.
+  startSetupAP();
   // Send the HTTP response first. The main loop performs the restart after
   // the response has had time to leave the ESP32's TCP stack.
   sendJson(200, "{\"ok\":true}");
@@ -519,9 +522,19 @@ void handleReset() {
 void startSetupAP() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET);
-  if (!setupAP) {
-    setupAP = WiFi.softAP(AP_NAME, AP_PASSWORD);
+  if (WiFi.softAPgetStationNum() >= 0 && setupAP) return;
+  // Retry AP startup rather than leaving the device silently unreachable if
+  // the radio is not ready immediately after a reboot.
+  for (uint8_t attempt = 0; attempt < 3 && !setupAP; ++attempt) {
+    setupAP = WiFi.softAP(AP_NAME, AP_PASSWORD, 1, false, 4);
+    if (!setupAP) delay(500);
+  }
+  if (setupAP) {
     dnsServer.start(53, "*", AP_IP);
+    Serial.print("Setup AP ready: "); Serial.println(AP_NAME);
+    Serial.print("Setup AP IP: "); Serial.println(WiFi.softAPIP());
+  } else {
+    Serial.println("ERROR: Setup AP failed to start after 3 attempts.");
   }
 }
 void connectWiFi() {
