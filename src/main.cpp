@@ -176,6 +176,7 @@ void refreshLock() {
   String response;
   bool ok = false;
   if (lockId.length()) ok = apiRequest("GET", "/locks/" + lockId, "", response);
+  else if (role == "wearer") { lastError = ""; lastJson = "{}"; return; }
   else { lastError = "No matching wearer session has been discovered yet."; return; }
   if (ok) { lastJson = response; lastRefresh = millis(); }
 }
