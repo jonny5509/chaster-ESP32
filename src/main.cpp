@@ -282,7 +282,7 @@ $('wifiForm').addEventListener('submit',async e=>{e.preventDefault();const f=new
 $('passwordForm').addEventListener('submit',async e=>{e.preventDefault();const password=new FormData(e.target).get('password');try{await call('/api/set-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});msg('status','Dashboard password saved. Restarting…')}catch(err){msg('status',err.message,'error')}});
 $('tokenUpdate').addEventListener('submit',async e=>{e.preventDefault();const token=new FormData(e.target).get('token');try{await call('/api/update-token',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});msg('status','Keyholder token saved. Restarting…')}catch(err){msg('status',err.message,'error')}});
 $('handoverForm').addEventListener('submit',async e=>{e.preventDefault();if(!confirm('Hand the device over now? The wearer Wi-Fi and dashboard password will be cleared. The wearer Chaster token and account ID will be retained.'))return;try{await call('/api/handover',{method:'POST'});msg('status','Handover started. The keyholder can now connect to Chaster-ESP32 and complete setup.','success')}catch(err){msg('handoverMessage',err.message,'error')}});
-loadState();setInterval(()=>{if(!$('dashboard').classList.contains('hidden'))loadState()},30000);setInterval(timer,1000);
+loadState();setInterval(()=>{loadState()},15000);setInterval(timer,1000);
 </script></body></html>)HTML";
 }
 
