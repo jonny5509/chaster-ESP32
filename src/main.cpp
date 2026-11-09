@@ -24,6 +24,7 @@ String role = "keyholder", lastJson = "{}", lastError;
 uint32_t lastRefresh = 0;
 uint32_t lastMatchAttempt = 0;
 bool handoverPending = false;
+bool handoverRestartPending = false;
 
 String htmlEscape(String s) {
   s.replace("&", "&amp;"); s.replace("<", "&lt;");
@@ -440,8 +441,10 @@ void handleHandover() {
   prefs.end();
   holderToken = ""; role = "keyholder"; handoverPending = true;
   wifiSsid = ""; wifiPassword = ""; dashboardPassword = "";
+  // Send the HTTP response first. The main loop performs the restart after
+  // the response has had time to leave the ESP32's TCP stack.
   sendJson(200, "{\"ok\":true}");
-  delay(500); ESP.restart();
+  handoverRestartPending = true;
 }
 void handleKeyholderSetup() {
   if (!requireAuth()) return;
@@ -585,6 +588,10 @@ void setup() {
 }
 void loop() {
   dnsServer.processNextRequest(); server.handleClient();
+  if (handoverRestartPending) {
+    delay(1200); // Allow the browser to receive the successful handover response.
+    ESP.restart();
+  }
   // Keep the setup AP available as a recovery path if the configured Wi-Fi drops later.
   static uint32_t lastWifiAttempt = 0;
   if (wifiSsid.length() && (!handoverPending || holderToken.length()) && WiFi.status() != WL_CONNECTED && millis() - lastWifiAttempt >= 15000) {
