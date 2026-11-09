@@ -26,11 +26,6 @@ uint32_t lastMatchAttempt = 0;
 bool handoverPending = false;
 bool handoverRestartPending = false;
 
-String htmlEscape(String s) {
-  s.replace("&", "&amp;"); s.replace("<", "&lt;");
-  s.replace(">", "&gt;"); s.replace("\"", "&quot;");
-  s.replace("'", "&#39;"); return s;
-}
 // Wearer token is read-only; controls are keyholder-gated.
 String activeToken() { return handoverPending ? "" : (role == "wearer" ? wearerToken : holderToken); }
 bool requireAuth() {
@@ -373,24 +368,6 @@ void handleUpdateTime() {
   else message += " Lock data refreshed.";
   out["message"] = message;
   String result; serializeJson(out, result); sendJson(200, result);
-}
-void handleSelectLock() {
-  if (!requireAuth() || !requireKeyholder()) return;
-  JsonDocument d; if (deserializeJson(d, server.arg("plain"))) { sendError(400, "Invalid JSON."); return; }
-  String requestedId = d["lockId"] | "";
-  requestedId.trim();
-  if (requestedId.length() > 128 || requestedId.indexOf("/") >= 0 || requestedId.indexOf("\\") >= 0 || requestedId.indexOf("?") >= 0 || requestedId.indexOf("#") >= 0) {
-    sendError(400, "Lock ID is invalid."); return;
-  }
-  lockId = requestedId;
-  // Persist the one lock selected for this keyholder device.
-  prefs.begin("chaster", false);
-  prefs.putString("holder_lock_id", lockId);
-  // Prevent legacy migration from restoring a stale selection after reboot.
-  prefs.remove("lock_id");
-  prefs.end();
-  refreshLock(); if (lastError.length()) { sendError(502, lastError); return; }
-  sendJson(200, "{\"ok\":true}");
 }
 void handleHistory() {
   if (!requireAuth()) return;
