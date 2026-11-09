@@ -440,7 +440,7 @@ void handleKeyholderSetup() {
   prefs.putString("role", "keyholder"); prefs.putBool("handover", false);
   prefs.end();
   wifiSsid = ssid; wifiPassword = pass; dashboardPassword = password; handoverPending = false;
-  sendJson(200, "{\\"ok\\":true}"); delay(500); ESP.restart();
+  sendJson(200, "{\"ok\":true}"); delay(500); ESP.restart();
 }
 void handleUpdateToken() {
   if (!requireAuth()) return;
