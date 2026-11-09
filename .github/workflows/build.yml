@@ -2,9 +2,9 @@ name: PlatformIO build
 
 on:
   push:
-    branches: [main]
+    branches: [main, wearer-keyholder-handover]
   pull_request:
-    branches: [main]
+    branches: [main, wearer-keyholder-handover]
   workflow_dispatch:
 
 jobs:
