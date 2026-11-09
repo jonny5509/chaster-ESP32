@@ -5,20 +5,20 @@ An ESP32-hosted Chaster dashboard with a two-stage setup and explicit wearer-to-
 ## How the handover works
 
 1. **Wearer setup:** connect to the device setup network `Chaster-ESP32` (default password: `chaster32`) and open `http://192.168.4.1`.
-2. Enter the Wi-Fi network, the lock ID, a wearer Chaster developer token with read access, and a unique dashboard password (at least 10 characters).
+2. Enter the Wi-Fi network, a wearer Chaster developer token with the `profile` scope, and a unique dashboard password (at least 10 characters). The device calls `GET /auth/profile` and stores the wearer account ID automatically; no lock ID is entered.
 3. The device joins the Wi-Fi network and displays a read-only wearer dashboard. Freeze/unfreeze, time adjustment, lock selection and keyholder configuration are hidden and also rejected by the firmware.
 4. **Give the device to the keyholder.** The keyholder opens the device dashboard and enters their own Chaster developer token in the handover panel.
 5. The device restarts in keyholder mode. The wearer token is erased from ESP32 NVS and RAM; the keyholder token is stored and used for all subsequent Chaster API requests. The keyholder dashboard restores lock controls, lock selection, history and token replacement.
 
-The wearer token is never promoted to a keyholder token. The keyholder must supply a token belonging to their own Chaster account. The Wi-Fi settings, selected lock ID and dashboard password remain in place during handover.
+The wearer token is never promoted to a keyholder token. The keyholder must supply a token belonging to their own Chaster account. The Wi-Fi settings, saved wearer account ID, discovered lock ID and dashboard password remain in place during handover. The wearer ID is never replaced by the keyholder ID.
 
 ## Features
 
-- Wearer-first Wi-Fi and read-only Chaster setup.
+- Wearer-first Wi-Fi setup and automatic wearer account identification via `GET /auth/profile` (`profile` scope).
 - Explicit keyholder token handover; wearer token is removed when handover completes.
 - Keyholder dashboard with live elapsed/remaining timers, lock progress, status/frozen indicators, selected-lock metadata, history and raw API diagnostics.
 - Keyholder-only freeze/unfreeze and add/remove-time actions, enforced in both the UI and firmware API.
-- Keyholder lock selection and token replacement.
+- Automatic session matching by wearer ID against the keyholder’s active locked-user search; no manual lock ID entry or selection.\n- Keyholder token replacement is restricted to the same saved keyholder account ID.
 - 30-second refresh interval with request throttling.
 - HTTP Basic Authentication for dashboard routes.
 - Authenticated Wi-Fi settings and recovery if the configured network changes or drops.
@@ -64,4 +64,4 @@ Chaster also checks the permissions on the selected lock; a valid token does not
 
 ## Verification status
 
-The handover flow is implemented in the `wearer-keyholder-handover` branch. It has not yet been compiled with PlatformIO or tested on physical ESP32 hardware. Confirm all four PlatformIO targets, Chaster endpoint permissions, token handover, reset behavior and lock actions on a non-critical test lock before relying on the firmware.
+The wearer/keyholder identity matching and automatic session discovery are implemented in the `wearer-keyholder-handover` branch. The firmware has not yet been compiled with PlatformIO or tested on physical ESP32 hardware. Confirm the exact response shape returned by the Chaster keyholder lock-search endpoint with your account and test on a non-critical lock before relying on it. Confirm all four PlatformIO targets, Chaster endpoint permissions, token handover, reset behavior and lock actions on a non-critical test lock before relying on the firmware.
