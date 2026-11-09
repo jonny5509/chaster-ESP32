@@ -181,14 +181,43 @@ bool discoverWearerLock(const String &keyholderToken, const String &expectedKeyh
   lastError = "No active locked session was found for the saved wearer account under this keyholder. Confirm that this keyholder currently holds the wearer's lock, then retry handover.";
   return false;
 }
+bool findActiveWearerLock(JsonVariantConst node, String &foundId, uint8_t depth = 0) {
+  if (depth > 12) return false;
+  if (node.is<JsonObjectConst>()) {
+    JsonObjectConst o = node.as<JsonObjectConst>();
+    String status = o["status"] | o["state"] | "";
+    bool active = status.equalsIgnoreCase("locked") || o["isLocked"] == true;
+    if (active) {
+      String candidate = findLockIdInEntry(node);
+      if (!candidate.length()) candidate = o["_id"] | o["id"] | "";
+      if (candidate.length()) { foundId = candidate; return true; }
+    }
+    for (JsonPairConst pair : o) if (findActiveWearerLock(pair.value(), foundId, depth + 1)) return true;
+  } else if (node.is<JsonArrayConst>()) {
+    for (JsonVariantConst item : node.as<JsonArrayConst>()) if (findActiveWearerLock(item, foundId, depth + 1)) return true;
+  }
+  return false;
+}
 void refreshLock() {
   lastRefresh = millis();
   String response;
-  bool ok = false;
-  if (lockId.length()) ok = apiRequest("GET", "/locks/" + lockId, "", response);
-  else if (role == "wearer") { lastError = ""; lastJson = "{}"; return; }
-  else { lastError = "No matching wearer session has been discovered yet."; return; }
-  if (ok) { lastJson = response; lastRefresh = millis(); }
+  if (role == "wearer" && !lockId.length()) {
+    // Wearers see their own active lock via their own token; no keyholder
+    // credentials or handover discovery are involved in this read-only view.
+    if (!apiRequestWithToken("GET", "/locks", "", response, wearerToken, "wearer")) return;
+    JsonDocument locks;
+    if (deserializeJson(locks, response)) { lastError = "Chaster returned invalid wearer lock-list JSON."; return; }
+    if (!findActiveWearerLock(locks.as<JsonVariantConst>(), lockId)) {
+      lastError = "No active locked session was found for this wearer account yet.";
+      lastJson = "{}";
+      return;
+    }
+  }
+  if (!lockId.length()) { lastError = "No matching wearer session has been discovered yet."; return; }
+  if (apiRequest("GET", "/locks/" + lockId, "", response)) {
+    lastJson = response;
+    lastRefresh = millis();
+  }
 }
 String dashboardPage() {
   return R"HTML(<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
