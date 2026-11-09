@@ -318,7 +318,7 @@ void handleFreeze() {
   if (!apiRequest("POST", "/locks/" + lockId + "/freeze", payload, response)) { sendError(502, lastError); return; }
   // Return the control result before making another HTTPS request. The main loop
   // will refresh lock data once this HTTP response has been sent.
-  lastRefresh = millis() - REFRESH_MS;
+  lastRefresh = millis();
   JsonDocument out; out["ok"] = true;
   String message = input["isFrozen"].as<bool>() ? "Chaster accepted the freeze request." : "Chaster accepted the unfreeze request.";
   out["message"] = message + " Updating lock details…";
@@ -334,7 +334,7 @@ void handleUpdateTime() {
   JsonDocument body; body["duration"] = duration; String payload; serializeJson(body, payload); String response;
   if (!apiRequest("POST", "/locks/" + lockId + "/update-time", payload, response)) { sendError(502, lastError); return; }
   // Defer the follow-up GET until after the control response has been delivered.
-  lastRefresh = millis() - REFRESH_MS;
+  lastRefresh = millis();
   JsonDocument out; out["ok"] = true;
   String message = duration > 0 ? "Chaster accepted the add-time request." : "Chaster accepted the remove-time request.";
   out["message"] = message + " Updating lock details…";
