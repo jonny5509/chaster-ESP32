@@ -538,24 +538,24 @@ void startSetupAP() {
   }
 }
 void connectWiFi() {
-  // During keyholder handover keep the setup AP available while joining the
-  // keyholder's saved Wi-Fi. The AP is needed to reach setup if STA is offline.
-  if (!wifiSsid.length()) { startSetupAP(); return; }
-  if (handoverPending) {
-    startSetupAP(); // WIFI_AP_STA: preserve Chaster-ESP32 while connecting as a client.
-    if (holderToken.length()) {
-      WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
-      uint32_t started = millis();
-      while (WiFi.status() != WL_CONNECTED && millis() - started < 20000) delay(100);
-    }
-    return;
-  }
-  // Switching from AP+STA to STA tears down the setup AP; clear the flag so fallback recreates it.
-  WiFi.mode(WIFI_STA); setupAP = false; WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
+  // Keep the device access point running permanently, including while the
+  // station interface is connected to the home/keyholder network. This keeps
+  // the dashboard reachable at http://192.168.4.1 and avoids losing the browser
+  // connection when the station connection changes or briefly drops.
+  startSetupAP();
+  if (!wifiSsid.length()) return;
+  if (handoverPending && !holderToken.length()) return;
+  WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
   uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started < 20000) delay(100);
-  if (WiFi.status() != WL_CONNECTED) startSetupAP();
-  else { dnsServer.stop(); WiFi.softAPdisconnect(true); setupAP = false; }
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Wi-Fi station connection failed; setup AP remains available.");
+  } else {
+    Serial.print("Wi-Fi connected. Dashboard also available at setup AP IP: ");
+    Serial.println(WiFi.softAPIP());
+    Serial.print("Home network IP: ");
+    Serial.println(WiFi.localIP());
+  }
 }
 void loadConfig() {
   prefs.begin("chaster", true);
@@ -612,9 +612,9 @@ void loop() {
     WiFi.reconnect();
     lastWifiAttempt = millis();
   }
-  if (WiFi.status() == WL_CONNECTED && setupAP && !handoverPending) {
-    dnsServer.stop(); WiFi.softAPdisconnect(true); setupAP = false;
-  }
+  // Do not tear down the setup AP when station Wi-Fi connects. It is the
+  // permanent local recovery/dashboard path at 192.168.4.1.
+  if (!setupAP) startSetupAP();
   if (handoverPending && holderToken.length() && WiFi.status() == WL_CONNECTED && millis() - lastMatchAttempt >= 60000) {
     lastMatchAttempt = millis();
     String foundLockId;
