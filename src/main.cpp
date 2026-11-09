@@ -422,14 +422,16 @@ void handleKeyholderSetup() {
   if (!token.length()) { sendError(400, "Your Chaster developer token is required."); return; }
   if (!ssid.length()) { sendError(400, "Your Wi-Fi network name is required."); return; }
   if (password.length() < 10) { sendError(400, "Set a dashboard password of at least 10 characters."); return; }
-  String discoveredHolderId;
-  if (!getAccountUserId(token, "keyholder", discoveredHolderId)) { sendError(502, lastError); return; }
-  String matchedLockId;
-  if (!discoverWearerLock(token, discoveredHolderId, matchedLockId)) { sendError(409, lastError); return; }
+  // Connect using the keyholder's supplied network before calling Chaster;
+  // the wearer network was deliberately cleared during handover.
   WiFi.mode(WIFI_AP_STA); WiFi.begin(ssid.c_str(), pass.c_str());
   uint32_t started = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - started < 20000) delay(100);
   if (WiFi.status() != WL_CONNECTED) { sendError(502, "Could not connect to your Wi-Fi network. Check the network name and password, then retry."); return; }
+  String discoveredHolderId;
+  if (!getAccountUserId(token, "keyholder", discoveredHolderId)) { sendError(502, lastError); return; }
+  String matchedLockId;
+  if (!discoverWearerLock(token, discoveredHolderId, matchedLockId)) { sendError(409, lastError); return; }
   prefs.begin("chaster", false);
   prefs.putString("holder_token", token); prefs.putString("holder_user_id", discoveredHolderId); prefs.putString("holder_lock_id", matchedLockId);
   prefs.putString("ssid", ssid);
