@@ -540,6 +540,7 @@ void setup() {
   server.onNotFound(captive);
   server.begin();
   if (WiFi.status() == WL_CONNECTED && activeToken().length()) refreshLock();
+  if (handoverPending && holderToken.length()) lastMatchAttempt = millis() - 60000;
   Serial.println("Chaster ESP32 dashboard ready.");
   Serial.println(WiFi.status() == WL_CONNECTED ? WiFi.localIP() : WiFi.softAPIP());
 }
