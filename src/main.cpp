@@ -100,6 +100,10 @@ bool getAccountUserId(const String &token, const String &accountRole, String &us
   userId = profile["_id"] | "";
   if (!userId.length()) userId = profile["id"] | "";
   if (!userId.length()) userId = profile["userId"] | "";
+  if (!userId.length() && profile["user"].is<JsonObject>()) {
+    userId = profile["user"]["_id"] | "";
+    if (!userId.length()) userId = profile["user"]["id"] | "";
+  }
   userId.trim();
   if (!userId.length()) { lastError = "Chaster profile response did not include a user ID."; return false; }
   return true;
@@ -364,6 +368,12 @@ void handleConfig() {
   if (!ssid.length() || !token.length()) { sendError(400, "Wi-Fi SSID and wearer Chaster token are required."); return; }
   if (!dashboardPassword.length() && newDashPassword.length() < 10) { sendError(400, "Set a dashboard password of at least 10 characters."); return; }
   if (holderToken.length() || wearerToken.length()) { sendError(409, "This device is already configured. Use handover or reset."); return; }
+  // First connect the station interface to the supplied Wi-Fi; the setup AP can remain active during this step.
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.begin(ssid.c_str(), pass.c_str());
+  uint32_t wifiStarted = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiStarted < 20000) delay(100);
+  if (WiFi.status() != WL_CONNECTED) { sendError(502, "Could not connect to the supplied Wi-Fi network. Check the network name and password, then retry."); return; }
   String discoveredWearerId;
   if (!getAccountUserId(token, "wearer", discoveredWearerId)) { sendError(502, lastError); return; }
   prefs.begin("chaster", false);
