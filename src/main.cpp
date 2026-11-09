@@ -301,7 +301,7 @@ async function loadState(){try{const x=await call('/api/state');selectedLockId=x
 $('setup').classList.add('hidden');$('dashboard').classList.remove('hidden');const wearerMode=x.role==='wearer';$('handoverPanel').classList.toggle('hidden',!wearerMode);document.querySelectorAll('.keyholderOnly').forEach(el=>el.classList.toggle('hidden',wearerMode));$('passwordSetup').classList.toggle('hidden',!x.needsPassword);$('networkName').textContent=x.wifiSsid||'—';$('deviceIp').textContent=x.ip||'—';if(!$('wifiSsid').value)$('wifiSsid').value=x.wifiSsid||'';const connected=!!x.connected;$('connectionText').textContent=connected?'Wi-Fi connected':'Wi-Fi offline';$('connectionDot').className='dot '+(connected?'good':'bad');msg('status',x.apiError?'Chaster API · '+x.apiError:(connected?'Connected to '+(x.wifiSsid||'Wi-Fi')+' · '+x.ip:'Wi-Fi disconnected'),x.apiError?'error':'success');document.querySelector('.hero .eyebrow').textContent=wearerMode?'Wearer dashboard':'Keyholder dashboard';document.querySelector('.footer').textContent=wearerMode?'Chaster Control Centre · wearer read-only mode':'Chaster Control Centre · keyholder edition';renderData(x.data||{});}catch(e){$('setup').classList.add('hidden');$('dashboard').classList.add('hidden');$('connectionText').textContent='Device state unavailable';$('connectionDot').className='dot bad';msg('status','Could not read device state: '+e.message+'. Check that you are connected to the ESP32 network, then reload this page. No setup details have been changed.','error')}}
 async function refresh(){try{await call('/api/refresh',{method:'POST'});await loadState()}catch(e){msg('actionMsg',e.message,'error')}}
 
-async function freeze(value){if(!selectedLockId){msg('actionMsg','Waiting for the wearer session to be matched.','error');return}if(!confirm((value?'Freeze':'Unfreeze')+' this lock?'))return;try{const x=await call('/api/freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({isFrozen:value})});msg('actionMsg',x.message||'Chaster accepted the request.','success');await refresh()}catch(e){msg('actionMsg',e.message,'error')}}
+async function freeze(value){if(!selectedLockId){msg('actionMsg','Waiting for the wearer session to be matched.','error');return}if(!confirm((value?'Freeze':'Unfreeze')+' this lock?'))return;try{const x=await call('/api/freeze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({isFrozen:value})});msg('actionMsg',x.message||'Chaster accepted the request.','success');await loadState()}catch(e){msg('actionMsg',e.message,'error')}}
 async function changeTime(add){if(!selectedLockId){msg('actionMsg','Waiting for the wearer session to be matched.','error');return}let h=Number($('hours').value),m=Number($('minutes').value);if(!Number.isInteger(h)||!Number.isInteger(m)||h<0||m<0||m>59||(!h&&!m)){msg('actionMsg','Enter a positive duration.','error');return}let sec=(h*3600+m*60)*(add?1:-1);if(!confirm((add?'Add ':'Remove ')+h+'h '+m+'m?'))return;try{const x=await call('/api/update-time',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:sec})});msg('actionMsg',x.message||'Chaster accepted the request.','success');await refresh()}catch(e){msg('actionMsg',e.message,'error')}}
 async function loadHistory(){if(!selectedLockId){msg('history','Waiting for the wearer session to be matched.');return}msg('history','Loading recent history for '+selectedLockId+'…');try{const x=await call('/api/history',{method:'POST'});msg('history',JSON.stringify(x.data,null,2))}catch(e){msg('history','Could not load history: '+e.message)}}
 $('keyholderSetup').addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.target),p={token:f.get('token'),ssid:f.get('ssid'),wifiPassword:f.get('wifiPassword'),dashboardPassword:f.get('dashboardPassword')};try{await call('/api/keyholder-setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});msg('status','Your Wi-Fi and dashboard settings saved. Restarting…','success')}catch(err){msg('status',err.message,'error')}});
@@ -347,12 +347,12 @@ void handleFreeze() {
   JsonDocument body; body["isFrozen"] = input["isFrozen"].as<bool>();
   String payload; serializeJson(body, payload); String response;
   if (!apiRequest("POST", "/locks/" + lockId + "/freeze", payload, response)) { sendError(502, lastError); return; }
-  refreshLock();
+  // Return the control result before making another HTTPS request. The main loop
+  // will refresh lock data once this HTTP response has been sent.
+  lastRefresh = millis() - REFRESH_MS;
   JsonDocument out; out["ok"] = true;
   String message = input["isFrozen"].as<bool>() ? "Chaster accepted the freeze request." : "Chaster accepted the unfreeze request.";
-  if (lastError.length()) message += " The action was accepted, but the lock refresh failed: " + lastError;
-  else message += " Lock data refreshed.";
-  out["message"] = message;
+  out["message"] = message + " Updating lock details…";
   String result; serializeJson(out, result); sendJson(200, result);
 }
 void handleUpdateTime() {
@@ -364,11 +364,11 @@ void handleUpdateTime() {
   if (!duration || duration < -31536000L || duration > 31536000L) { sendError(400, "Duration must be between -365 and 365 days."); return; }
   JsonDocument body; body["duration"] = duration; String payload; serializeJson(body, payload); String response;
   if (!apiRequest("POST", "/locks/" + lockId + "/update-time", payload, response)) { sendError(502, lastError); return; }
-  refreshLock(); JsonDocument out; out["ok"] = true;
+  // Defer the follow-up GET until after the control response has been delivered.
+  lastRefresh = millis() - REFRESH_MS;
+  JsonDocument out; out["ok"] = true;
   String message = duration > 0 ? "Chaster accepted the add-time request." : "Chaster accepted the remove-time request.";
-  if (lastError.length()) message += " The action was accepted, but the lock refresh failed: " + lastError;
-  else message += " Lock data refreshed.";
-  out["message"] = message;
+  out["message"] = message + " Updating lock details…";
   String result; serializeJson(out, result); sendJson(200, result);
 }
 void handleHistory() {
