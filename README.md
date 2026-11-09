@@ -19,7 +19,7 @@ The wearer token is never promoted to a keyholder token. The keyholder must supp
 - Wearer-initiated handover with no keyholder token required from the wearer; the keyholder enters their token on the keyholder setup page. The wearer token is retained separately.
 - Keyholder dashboard with live elapsed/remaining timers, lock progress, status/frozen indicators, selected-lock metadata, history and raw API diagnostics.
 - Keyholder-only freeze/unfreeze and add/remove-time actions, enforced in both the UI and firmware API.
-- Automatic session matching requires both identities: the keyholder token is verified against the keyholder profile ID, and the keyholder's active locked-session search is matched against the saved wearer profile ID; no manual lock ID entry or selection.
+- Automatic session matching requires both identities: the keyholder token is verified against the keyholder profile ID, and the keyholder's active locked-session search is matched against the saved wearer profile ID; no manual lock ID entry or selection. If the lock is not available yet, the device retries automatically every 60 seconds until it appears.
 - Preserve the wearer token and wearer ID after handover; clear wearer Wi-Fi and dashboard credentials and prompt the keyholder to enter their own network and dashboard password.
 - Keyholder token replacement is restricted to the same saved keyholder account ID.
 - 30-second refresh interval with request throttling.
