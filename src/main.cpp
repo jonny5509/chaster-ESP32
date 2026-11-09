@@ -498,6 +498,14 @@ void handleReset() {
   prefs.begin("chaster", false); prefs.clear(); prefs.end();
   sendJson(200, "{\"ok\":true}"); delay(500); ESP.restart();
 }
+void stopSetupAP() {
+  if (!setupAP) return;
+  dnsServer.stop();
+  WiFi.softAPdisconnect(true);
+  setupAP = false;
+  Serial.println("Setup AP disabled; device is fully configured and connected to Wi-Fi.");
+  WiFi.mode(WIFI_STA);
+}
 void startSetupAP() {
   WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(AP_IP, AP_GATEWAY, AP_SUBNET);
@@ -591,9 +599,16 @@ void loop() {
     WiFi.reconnect();
     lastWifiAttempt = millis();
   }
-  // Do not tear down the setup AP when station Wi-Fi connects. It is the
-  // permanent local recovery/dashboard path at 192.168.4.1.
-  if (!setupAP) startSetupAP();
+  // The setup AP is only needed during provisioning or as a recovery path.
+  // Once credentials are saved and station Wi-Fi is connected, shut it down.
+  bool fullyConfigured = (wearerToken.length() || holderToken.length()) &&
+                         wifiSsid.length() && dashboardPassword.length() &&
+                         WiFi.status() == WL_CONNECTED;
+  if (fullyConfigured) {
+    if (setupAP) stopSetupAP();
+  } else if (!setupAP) {
+    startSetupAP();
+  }
   if (handoverPending && holderToken.length() && WiFi.status() == WL_CONNECTED && millis() - lastMatchAttempt >= 60000) {
     lastMatchAttempt = millis();
     String foundLockId;
