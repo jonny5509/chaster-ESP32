@@ -154,16 +154,15 @@ bool findWearerLock(JsonVariantConst node, const String &wearerId, String &found
   }
   return false;
 }
-bool discoverWearerLock(const String &keyholderToken, String &foundLockId) {
-  // Both account identities are required: verify the supplied keyholder token
-  // still belongs to the saved keyholder account, then search that account's
-  // keyholder locks for the saved wearer account.
+bool discoverWearerLock(const String &keyholderToken, const String &expectedKeyholderId, String &foundLockId) {
+  // Verify the supplied keyholder token against the keyholder profile ID,
+  // then search that account's locks for the saved wearer profile ID.
   if (!wearerUserId.length()) { lastError = "Saved wearer account ID is missing. Reset and repeat wearer setup."; return false; }
-  if (!holderUserId.length()) { lastError = "Saved keyholder account ID is missing. Reset and repeat keyholder handover."; return false; }
+  if (!expectedKeyholderId.length()) { lastError = "Keyholder account ID is missing. Complete keyholder profile validation first."; return false; }
   String verifiedKeyholderId;
   if (!getAccountUserId(keyholderToken, "keyholder", verifiedKeyholderId)) return false;
-  if (verifiedKeyholderId != holderUserId) {
-    lastError = "The keyholder token does not belong to the saved keyholder account. Both account identities must match before session discovery.";
+  if (verifiedKeyholderId != expectedKeyholderId) {
+    lastError = "The keyholder token does not belong to the supplied keyholder account ID. Both account identities must match before session discovery.";
     return false;
   }
   for (uint8_t page = 0; page < 10; ++page) {
@@ -410,7 +409,7 @@ void handleHandover() {
   String discoveredHolderId;
   if (!getAccountUserId(token, "keyholder", discoveredHolderId)) { sendError(502, lastError); return; }
   String matchedLockId;
-  if (!discoverWearerLock(token, matchedLockId)) { sendError(409, lastError); return; }
+  if (!discoverWearerLock(token, discoveredHolderId, matchedLockId)) { sendError(409, lastError); return; }
   prefs.begin("chaster", false);
   prefs.putString("holder_token", token); prefs.putString("holder_user_id", discoveredHolderId); prefs.putString("holder_lock_id", matchedLockId);
   prefs.putString("role", "keyholder"); prefs.putBool("handover", true);
