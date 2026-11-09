@@ -97,7 +97,9 @@ bool getAccountUserId(const String &token, const String &accountRole, String &us
   if (!apiRequestWithToken("GET", "/auth/profile", "", response, token, accountRole)) return false;
   JsonDocument profile;
   if (deserializeJson(profile, response)) { lastError = "Chaster returned invalid profile JSON."; return false; }
-  userId = profile["_id"] | profile["id"] | profile["userId"] | "";
+  userId = profile["_id"] | "";
+  if (!userId.length()) userId = profile["id"] | "";
+  if (!userId.length()) userId = profile["userId"] | "";
   userId.trim();
   if (!userId.length()) { lastError = "Chaster profile response did not include a user ID."; return false; }
   return true;
@@ -107,7 +109,9 @@ String findLockIdInEntry(JsonVariantConst entry) {
   JsonObjectConst o = entry.as<JsonObjectConst>();
   JsonVariantConst lock = o["lock"];
   if (lock.is<JsonObjectConst>()) {
-    String id = lock["_id"] | lock["id"] | lock["lockId"] | "";
+    String id = lock["_id"] | "";
+    if (!id.length()) id = lock["id"] | "";
+    if (!id.length()) id = lock["lockId"] | "";
     if (id.length()) return id;
   }
   String id = o["lockId"] | o["lock_id"] | "";
@@ -122,16 +126,22 @@ bool findWearerLock(JsonVariantConst node, const String &wearerId, String &found
   if (depth > 12) return false;
   if (node.is<JsonObjectConst>()) {
     JsonObjectConst o = node.as<JsonObjectConst>();
-    String relatedId = o["userId"] | o["wearerId"] | o["lockedUserId"] | "";
+    String relatedId = o["userId"] | "";
+    if (!relatedId.length()) relatedId = o["wearerId"] | "";
+    if (!relatedId.length()) relatedId = o["lockedUserId"] | "";
     JsonVariantConst user = o["user"];
-    if (!relatedId.length() && user.is<JsonObjectConst>()) relatedId = user["_id"] | user["id"] | "";
+    if (!relatedId.length() && user.is<JsonObjectConst>()) relatedId = user["_id"] | "";
+    if (!relatedId.length()) relatedId = user["id"] | "";
     JsonVariantConst wearer = o["wearer"];
-    if (!relatedId.length() && wearer.is<JsonObjectConst>()) relatedId = wearer["_id"] | wearer["id"] | "";
+    if (!relatedId.length() && wearer.is<JsonObjectConst>()) relatedId = wearer["_id"] | "";
+    if (!relatedId.length()) relatedId = wearer["id"] | "";
     JsonVariantConst lockedUser = o["lockedUser"];
-    if (!relatedId.length() && lockedUser.is<JsonObjectConst>()) relatedId = lockedUser["_id"] | lockedUser["id"] | "";
+    if (!relatedId.length() && lockedUser.is<JsonObjectConst>()) relatedId = lockedUser["_id"] | "";
+    if (!relatedId.length()) relatedId = lockedUser["id"] | "";
     if (relatedId == wearerId) {
       foundLockId = findLockIdInEntry(node);
-      if (!foundLockId.length()) { String candidate = o["_id"] | o["id"] | ""; if (candidate != wearerId) foundLockId = candidate; }
+      if (!foundLockId.length()) { String candidate = o["_id"] | "";
+        if (!candidate.length()) candidate = o["id"] | ""; if (candidate != wearerId) foundLockId = candidate; }
       if (foundLockId.length()) return true;
     }
     for (JsonPairConst pair : o) if (findWearerLock(pair.value(), wearerId, foundLockId, depth + 1)) return true;
