@@ -46,6 +46,7 @@ bool requireAuth() {
   server.send(423, "application/json", "{\"ok\":false,\"error\":\"Set a dashboard password before using device controls.\"}");
   return false;
 }
+void sendError(int code, const String &message);
 bool requireKeyholder() {
   if (role == "keyholder" && holderToken.length() && !handoverPending) return true;
   sendError(403, "This action is available only after the keyholder completes handover.");
@@ -400,6 +401,7 @@ void setup() {
   server.on("/api/select-lock", HTTP_POST, handleSelectLock);
   server.on("/api/history", HTTP_POST, handleHistory);
   server.on("/api/config", HTTP_POST, handleConfig);
+  server.on("/api/handover", HTTP_POST, handleHandover);
   server.on("/api/set-password", HTTP_POST, handleSetPassword);
   server.on("/api/update-wifi", HTTP_POST, handleUpdateWiFi);
   server.on("/api/update-token", HTTP_POST, handleUpdateToken);
