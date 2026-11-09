@@ -22,6 +22,7 @@ Preferences prefs;
 String wifiSsid, wifiPassword, wearerToken, holderToken, lockId, dashboardPassword, wearerUserId, holderUserId;
 String role = "keyholder", lastJson = "{}", lastError;
 uint32_t lastRefresh = 0;
+uint32_t lastMatchAttempt = 0;
 bool handoverPending = false;
 
 String htmlEscape(String s) {
@@ -299,6 +300,7 @@ void handleState() {
   bool configured = (holderToken.length() > 0 || wearerToken.length() > 0) && wifiSsid.length() > 0 && dashboardPassword.length() > 0 && !handoverPending;
   d["ok"] = true; d["configured"] = configured;
   d["role"] = role; d["connected"] = WiFi.status() == WL_CONNECTED;
+  d["handoverPending"] = handoverPending; d["keyholderTokenSaved"] = holderToken.length() > 0;
   d["wearerUserId"] = wearerUserId; d["keyholderUserId"] = holderUserId; d["lockId"] = lockId; d["apiError"] = lastError; d["needsPassword"] = !dashboardPassword.length(); d["wifiSsid"] = wifiSsid;
   d["ip"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : WiFi.softAPIP().toString();
   JsonDocument data; if (deserializeJson(data, lastJson)) data["raw"] = lastJson;
@@ -430,18 +432,19 @@ void handleKeyholderSetup() {
   if (WiFi.status() != WL_CONNECTED) { sendError(502, "Could not connect to your Wi-Fi network. Check the network name and password, then retry."); return; }
   String discoveredHolderId;
   if (!getAccountUserId(token, "keyholder", discoveredHolderId)) { sendError(502, lastError); return; }
-  String matchedLockId;
-  if (!discoverWearerLock(token, discoveredHolderId, matchedLockId)) { sendError(409, lastError); return; }
+  // Save the validated keyholder identity and settings now. The wearer may
+  // not yet have transferred the lock; background polling will keep looking.
   prefs.begin("chaster", false);
-  prefs.putString("holder_token", token); prefs.putString("holder_user_id", discoveredHolderId); prefs.putString("holder_lock_id", matchedLockId);
+  prefs.putString("holder_token", token); prefs.putString("holder_user_id", discoveredHolderId); prefs.remove("holder_lock_id");
   prefs.putString("ssid", ssid);
   if (pass.length()) prefs.putString("wifi_pw", pass); else prefs.remove("wifi_pw");
   prefs.putString("dash_pw", password);
-  prefs.putString("role", "keyholder"); prefs.putBool("handover", false);
+  prefs.putString("role", "keyholder"); prefs.putBool("handover", true);
   prefs.end();
-  holderToken = token; holderUserId = discoveredHolderId; lockId = matchedLockId;
-  wifiSsid = ssid; wifiPassword = pass; dashboardPassword = password; handoverPending = false;
-  sendJson(200, "{\"ok\":true}"); delay(500); ESP.restart();
+  holderToken = token; holderUserId = discoveredHolderId; lockId = "";
+  wifiSsid = ssid; wifiPassword = pass; dashboardPassword = password; handoverPending = true;
+  lastMatchAttempt = 0;
+  sendJson(200, "{\"ok\":true,\"pending\":true}"); delay(500); ESP.restart();
 }
 void handleUpdateToken() {
   if (!requireAuth()) return;
@@ -551,6 +554,22 @@ void loop() {
   }
   if (WiFi.status() == WL_CONNECTED && setupAP && !handoverPending) {
     dnsServer.stop(); WiFi.softAPdisconnect(true); setupAP = false;
+  }
+  if (handoverPending && holderToken.length() && WiFi.status() == WL_CONNECTED && millis() - lastMatchAttempt >= 60000) {
+    lastMatchAttempt = millis();
+    String foundLockId;
+    if (discoverWearerLock(holderToken, holderUserId, foundLockId)) {
+      lockId = foundLockId;
+      prefs.begin("chaster", false);
+      prefs.putString("holder_lock_id", lockId);
+      prefs.putBool("handover", false);
+      prefs.end();
+      handoverPending = false;
+      lastError = "";
+      refreshLock();
+    } else {
+      Serial.println("Handover pending: active wearer lock not found yet; retrying in 60 seconds.");
+    }
   }
   if (WiFi.status() == WL_CONNECTED && activeToken().length() && !handoverPending && millis() - lastRefresh >= REFRESH_MS) refreshLock();
   delay(2);
