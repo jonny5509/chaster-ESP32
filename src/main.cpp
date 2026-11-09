@@ -313,14 +313,6 @@ loadState();setInterval(()=>{loadState()},15000);setInterval(timer,1000);
 </script></body></html>)HTML";
 }
 
-void handleScan() {
-  if (!requireAuth()) return; JsonDocument d; JsonArray a=d["networks"].to<JsonArray>(); int n=WiFi.scanNetworks(false,true); for(int i=0;i<n;i++){ JsonObject o=a.add<JsonObject>(); o["ssid"]=WiFi.SSID(i); o["rssi"]=WiFi.RSSI(i); } WiFi.scanDelete(); String out; serializeJson(d,out); sendJson(200,out); }
-void captive() { server.sendHeader("Location","http://192.168.4.1/",true); server.send(302,"text/plain",""); }
-void handleRoot() {
-  if (!requireAuth()) return;
-  server.sendHeader("Cache-Control", "no-store");
-  server.send(200, "text/html; charset=utf-8", dashboardPage());
-}
 void handleState() {
   if (!requireAuth()) return;
   JsonDocument d;
@@ -565,7 +557,7 @@ void setup() {
   Serial.begin(115200); delay(250); loadConfig(); connectWiFi();
   if (WiFi.status() != WL_CONNECTED) startSetupAP();
   server.on("/", HTTP_GET, handleRoot);
-  server.on("/generate_204", HTTP_GET, captive); server.on("/hotspot-detect.html", HTTP_GET, captive); server.on("/connecttest.txt", HTTP_GET, captive); server.on("/api/scan", HTTP_GET, handleScan);
+  server.on("/generate_204", HTTP_GET, captive); server.on("/hotspot-detect.html", HTTP_GET, captive); server.on("/connecttest.txt", HTTP_GET, captive);
   server.on("/api/state", HTTP_GET, handleState);
   server.on("/api/refresh", HTTP_POST, handleRefresh);
   server.on("/api/freeze", HTTP_POST, handleFreeze);
