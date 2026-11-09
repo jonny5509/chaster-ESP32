@@ -290,6 +290,16 @@ loadState();setInterval(()=>{loadState()},15000);setInterval(timer,1000);
 </script></body></html>)HTML";
 }
 
+void handleRoot() {
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "text/html; charset=utf-8", dashboardPage());
+}
+
+void captive() {
+  server.sendHeader("Location", "/", true);
+  server.send(302, "text/plain", "Redirecting to Chaster dashboard");
+}
+
 void handleState() {
   if (!requireAuth()) return;
   JsonDocument d;
