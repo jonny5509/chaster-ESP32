@@ -8,14 +8,14 @@ An ESP32-hosted Chaster dashboard with a two-stage setup and explicit wearer-to-
 2. Enter the Wi-Fi network, a wearer Chaster developer token with the `profile` scope, and a unique dashboard password (at least 10 characters). The device calls `GET /auth/profile` and stores the wearer account ID automatically; no lock ID is entered.
 3. The device joins the Wi-Fi network and displays a read-only wearer dashboard. Freeze/unfreeze, time adjustment, lock selection and keyholder configuration are hidden and also rejected by the firmware.
 4. **Give the device to the keyholder.** The keyholder opens the device dashboard and enters their own Chaster developer token in the handover panel.
-5. The device restarts in keyholder mode. The wearer token is erased from ESP32 NVS and RAM; the keyholder token is stored and used for all subsequent Chaster API requests. The keyholder dashboard restores lock controls, lock selection, history and token replacement.
+5. The device validates the keyholder token, matches the active session to the saved wearer account ID, and stores the keyholder token and account ID. The wearer token and wearer account ID remain stored separately. The device then clears the wearer Wi-Fi credentials and dashboard password and restarts its setup access point.\n6. The keyholder connects to the setup access point and enters their own Wi-Fi network, Wi-Fi password and a new dashboard password. The device joins that network and starts the keyholder dashboard.
 
 The wearer token is never promoted to a keyholder token. The keyholder must supply a token belonging to their own Chaster account. The wearer account ID and wearer token remain stored throughout handover. The wearer Wi-Fi credentials and dashboard password are cleared only after the keyholder token has been validated and the matching session has been found. The keyholder then configures their own Wi-Fi credentials and dashboard password. The wearer ID is never replaced by the keyholder ID.
 
 ## Features
 
 - Wearer-first Wi-Fi setup and automatic wearer account identification via `GET /auth/profile` (`profile` scope).
-- Explicit keyholder token handover; wearer token is removed when handover completes.
+- Explicit keyholder token handover; wearer token is retained separately after handover.
 - Keyholder dashboard with live elapsed/remaining timers, lock progress, status/frozen indicators, selected-lock metadata, history and raw API diagnostics.
 - Keyholder-only freeze/unfreeze and add/remove-time actions, enforced in both the UI and firmware API.
 - Automatic session matching by wearer ID against the keyholder’s active locked-user search; no manual lock ID entry or selection.\n- Preserve the wearer token and wearer ID after handover; clear wearer Wi-Fi and dashboard credentials and prompt the keyholder to enter their own network and dashboard password.\n- Keyholder token replacement is restricted to the same saved keyholder account ID.
